@@ -17,15 +17,24 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev",
+    "prisma:migrate:prod": "npx prisma migrate deploy",
+    "prisma:studio": "npx prisma studio",
+    "prisma:seed": "npx prisma db seed",
+    "seed": "npx prisma db seed"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
     "bullmq": "^5.69.3",
+    "dotenv": "^16.4.7",
     "ioredis": "^5.9.3",
+    "pg": "^8.13.1",
     "prisma": "^7.4.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
@@ -52,8 +61,11 @@
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.3",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.20.0"
+  },
+  "prisma": {
+    "seed": "npx ts-node --esm prisma/seed.ts"
   },
   "jest": {
     "moduleFileExtensions": [
