@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -11,4 +5,203 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  ADMIN
+  SHELTER
+}
+
+enum PetSpecies {
+  DOG
+  CAT
+  BIRD
+  RABBIT
+  OTHER
+}
+
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  ADOPTED
+  IN_CUSTODY
+}
+
+enum AdoptionStatus {
+  PENDING
+  APPROVED
+  ESCROW_FUNDED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum CustodyStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum EscrowStatus {
+  CREATED
+  FUNDED
+  RELEASED
+  REFUNDED
+  DISPUTED
+}
+
+enum EventType {
+  USER_REGISTERED
+  PET_LISTED
+  ADOPTION_REQUESTED
+  ADOPTION_APPROVED
+  ADOPTION_REJECTED
+  ADOPTION_COMPLETED
+  ESCROW_CREATED
+  ESCROW_FUNDED
+  ESCROW_RELEASED
+  ESCROW_REFUNDED
+  CUSTODY_STARTED
+  CUSTODY_COMPLETED
+}
+
+// ─── Models ──────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String   @map("first_name")
+  lastName  String   @map("last_name")
+  role      UserRole @default(USER)
+
+  stellarPublicKey String? @unique @map("stellar_public_key")
+  avatarUrl        String? @map("avatar_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pets              Pet[]
+  adoptionRequests  AdoptionRequest[]  @relation("Adopter")
+  receivedRequests  AdoptionRequest[]  @relation("Owner")
+  custodiesAsOwner  CustodyAgreement[] @relation("CustodyOwner")
+  custodiesAsKeeper CustodyAgreement[] @relation("CustodyKeeper")
+
+  @@map("users")
+}
+
+model Pet {
+  id          String    @id @default(uuid())
+  name        String
+  species     PetSpecies
+  breed       String?
+  age         Int?
+  description String?
+  imageUrl    String?   @map("image_url")
+  status      PetStatus @default(AVAILABLE)
+
+  ownerId String @map("owner_id")
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  adoptionRequests   AdoptionRequest[]
+  custodyAgreements  CustodyAgreement[]
+
+  @@index([status])
+  @@index([species])
+  @@index([ownerId])
+  @@map("pets")
+}
+
+model AdoptionRequest {
+  id     String         @id @default(uuid())
+  status AdoptionStatus @default(PENDING)
+  notes  String?
+
+  petId String @map("pet_id")
+  pet   Pet    @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  adopterId String @map("adopter_id")
+  adopter   User   @relation("Adopter", fields: [adopterId], references: [id], onDelete: Cascade)
+
+  ownerId String @map("owner_id")
+  owner   User   @relation("Owner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  escrowId String?        @unique @map("escrow_id")
+  escrow   EscrowAccount? @relation(fields: [escrowId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([adopterId])
+  @@index([ownerId])
+  @@map("adoption_requests")
+}
+
+model CustodyAgreement {
+  id            String        @id @default(uuid())
+  status        CustodyStatus @default(ACTIVE)
+  depositAmount Decimal       @map("deposit_amount") @db.Decimal(12, 2)
+  startDate     DateTime      @map("start_date")
+  endDate       DateTime      @map("end_date")
+  terms         String?
+
+  petId String @map("pet_id")
+  pet   Pet    @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  ownerId String @map("owner_id")
+  owner   User   @relation("CustodyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  keeperId String @map("keeper_id")
+  keeper   User   @relation("CustodyKeeper", fields: [keeperId], references: [id], onDelete: Cascade)
+
+  escrowId String?        @unique @map("escrow_id")
+  escrow   EscrowAccount? @relation(fields: [escrowId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([keeperId])
+  @@map("custody_agreements")
+}
+
+model EscrowAccount {
+  id              String       @id @default(uuid())
+  stellarAccountId String      @unique @map("stellar_account_id")
+  transactionHash String?      @map("transaction_hash")
+  amount          Decimal      @db.Decimal(12, 2)
+  status          EscrowStatus @default(CREATED)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  adoptionRequest  AdoptionRequest?
+  custodyAgreement CustodyAgreement?
+
+  @@index([status])
+  @@map("escrow_accounts")
+}
+
+model EventLog {
+  id          String    @id @default(uuid())
+  type        EventType
+  aggregateId String    @map("aggregate_id")
+  payload     Json      @default("{}")
+  metadata    Json      @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([aggregateId])
+  @@index([createdAt])
+  @@map("event_logs")
 }

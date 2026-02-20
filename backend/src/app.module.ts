@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
 import { PetsModule } from './pets/pets.module';
 import { AdoptionModule } from './adoption/adoption.module';
 import { CustodyModule } from './custody/custody.module';
@@ -10,7 +11,7 @@ import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [PetsModule, AdoptionModule, CustodyModule, EscrowModule, EventsModule, StellarModule, AuthModule],
+  imports: [PrismaModule, PetsModule, AdoptionModule, CustodyModule, EscrowModule, EventsModule, StellarModule, AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })
