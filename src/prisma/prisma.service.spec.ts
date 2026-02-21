@@ -13,15 +13,15 @@ describe('PrismaService', () => {
   });
 
   afterEach(async () => {
-    await service.onModuleDestroy();
+    await service.$disconnect(); // Ensure proper teardown
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  it('should be an instance of PrismaService', () => {
-    expect(service).toBeInstanceOf(PrismaService);
+  it('should be defined as PrismaService', () => {
+    expect(service.constructor.name).toBe('PrismaService');
   });
 
   it('should have onModuleInit method', () => {
