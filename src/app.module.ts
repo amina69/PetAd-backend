@@ -9,9 +9,10 @@ import { EscrowModule } from './escrow/escrow.module';
 import { EventsModule } from './events/events.module';
 import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
+import { HealthController } from './health/health.module';
 
 @Module({
-  imports: [PrismaModule, PetsModule, AdoptionModule, CustodyModule, EscrowModule, EventsModule, StellarModule, AuthModule],
+  imports: [PrismaModule, PetsModule, AdoptionModule, CustodyModule, EscrowModule, EventsModule, StellarModule, AuthModule, HealthController],
   controllers: [AppController],
   providers: [AppService],
 })
