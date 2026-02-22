@@ -1,45 +1,93 @@
+version: '3.8'
+
 services:
-  backend:
-    container_name: petad-backend
+  app:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
-      - "5555:5555"
-    volumes:
-      - .:/app
-      - /app/node_modules
-    env_file:
-      - .env
     environment:
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
-      - NODE_ENV=development
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://petad:petad@postgres:5432/petad
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secure-jwt-secret-min-32-characters
+      - PORT=3000
     depends_on:
-      - db
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - petad-network
     restart: unless-stopped
 
-  db:
-    image: postgres:15
-    container_name: petad-postgres
+  postgres:
+    image: postgres:15-alpine
     environment:
-      POSTGRES_USER: petad
-      POSTGRES_PASSWORD: petadpassword
-      POSTGRES_DB: petad_db
+      - POSTGRES_DB=petad
+      - POSTGRES_USER=petad
+      - POSTGRES_PASSWORD=petad
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./prisma/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - petad-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petad -d petad"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   redis:
-    image: redis:7
-    container_name: petad-redis
+    image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - petad-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
+
+  # Development service with hot reload
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Debug port
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://petad:petad@postgres:5432/petad_dev
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-jwt-secret-min-32-characters
+      - PORT=3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    networks:
+      - petad-network
+    profiles:
+      - dev
 
 volumes:
   postgres_data:
+  redis_data:
+
+networks:
+  petad-network:
+    driver: bridge
