@@ -10,6 +10,7 @@ import { EscrowModule } from './escrow/escrow.module';
 import { EventsModule } from './events/events.module';
 import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { AuthModule } from './auth/auth.module';
     EscrowModule,
     EventsModule,
     StellarModule,
-    AuthModule
+    AuthModule,
+    HealthModule
   ],
   controllers: [AppController],
   providers: [AppService],
