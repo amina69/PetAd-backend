@@ -84,6 +84,13 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  ADOPTED
+  IN_CUSTODY
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -102,7 +109,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned   Pet[] @relation("PetOwner")
+  pets        Pet[] @relation("shelter")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
@@ -117,26 +124,34 @@ model User {
 
 
 model Pet {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   name        String
-  species     PetSpecies
+  species     String
   breed       String?
-  age         Int?
-  description String?
-  imageUrl    String?     @map("image_url")
-
-  currentOwnerId String?  @map("current_owner_id")
-  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  adoptions Adoption[]
-  custodies Custody[]
-
+  age         Int
+  gender      String?
+  size        String?
+  color       String?
+  description String?   @db.Text
+  images      String[]
+  status      PetStatus @default(AVAILABLE)
+  
+  // Relationships
+  shelterId   String
+  shelter     User      @relation("shelter", fields: [shelterId], references: [id], onDelete: Cascade)
+  
+  // Relations with other models
+  adoptions   Adoption[]
+  custodies   Custody[]
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Indexes
+  @@index([status])
   @@index([species])
-  @@index([currentOwnerId])
-  @@map("pets")
+  @@index([shelterId])
 }
 
 
