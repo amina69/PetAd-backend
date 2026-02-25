@@ -7,6 +7,9 @@ import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 
+// This bootstrap function is like aFactory that builds our NestJS app - it creates,
+// configures, and starts the entire application server, making it ready to handle requests.
+// Fun fact: The number 3001 is used here because 3000 is commonly taken by other services.
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
