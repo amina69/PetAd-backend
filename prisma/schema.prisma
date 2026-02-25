@@ -96,6 +96,8 @@ model User {
 
   trustScore Float   @default(50)
 
+
+
   stellarPublicKey String? @unique @map("stellar_public_key")
   avatarUrl        String? @map("avatar_url")
 
@@ -109,6 +111,7 @@ model User {
 
   custodiesHeld Custody[] @relation("CustodyHolder")
 
+
   events EventLog[] @relation("ActorEvents")
 
   @@map("users")
@@ -117,6 +120,7 @@ model User {
 
 
 model Pet {
+
   id          String      @id @default(uuid())
   name        String
   species     PetSpecies
@@ -141,6 +145,7 @@ model Pet {
 
 
 model Adoption {
+
   id     String         @id @default(uuid())
   status AdoptionStatus @default(REQUESTED)
   notes  String?
@@ -170,6 +175,7 @@ model Adoption {
 
 
 model Custody {
+  
   id       String        @id @default(uuid())
   status   CustodyStatus @default(ACTIVE)
   type     CustodyType
