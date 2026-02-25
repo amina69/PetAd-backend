@@ -49,7 +49,6 @@ describe('EventsService', () => {
 
     await service.logEvent(mockDto);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(mockPrismaService.eventLog.create).toHaveBeenCalledWith({
       data: {
         entityType: mockDto.entityType,

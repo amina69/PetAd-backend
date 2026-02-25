@@ -37,5 +37,3 @@ export class PrismaService
     this.logger.log('Database connection closed');
   }
 }
-
-

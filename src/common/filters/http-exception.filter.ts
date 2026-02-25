@@ -18,12 +18,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let message: string | object = 'Internal server error';
 
     if (exception instanceof HttpException) {
-      const httpException = exception as HttpException;
+      const httpException = exception;
       status = httpException.getStatus();
       message = httpException.getResponse();
-    } 
-    else if (exception instanceof Error) {
-      const error = exception as Error;
+    } else if (exception instanceof Error) {
+      const error = exception;
       message = error.message;
     }
 
