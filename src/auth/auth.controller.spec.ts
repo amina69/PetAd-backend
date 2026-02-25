@@ -7,6 +7,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
+process.env.JWT_SECRET = 'super-secret-test-key';
+
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
 
