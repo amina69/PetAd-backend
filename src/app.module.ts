@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,6 +11,7 @@ import { EventsModule } from './events/events.module';
 import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
@@ -23,7 +24,16 @@ import { HealthModule } from './health/health.module';
     EventsModule,
     StellarModule,
     AuthModule,
-    HealthModule
+    HealthModule,
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url: config.get<string>('REDIS_URL')
+        },
+      }),
+    }),
+    
   ],
   controllers: [AppController],
   providers: [AppService],
