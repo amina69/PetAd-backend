@@ -1,158 +1,149 @@
 import {
   Injectable,
   NotFoundException,
-  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
-import { PetAvailabilityService } from '../pets/pet-availability.service';
-import { CustodyStatus, EventEntityType, EventType } from '@prisma/client';
+import { EscrowService } from '../escrow/escrow.service';
+import { CreateCustodyDto } from './dto/create-custody.dto';
+import { CustodyResponseDto } from './dto/custody-response.dto';
 
 @Injectable()
 export class CustodyService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly events: EventsService,
-    private readonly availabilityService: PetAvailabilityService,
+    private readonly eventsService: EventsService,
+    private readonly escrowService: EscrowService,
   ) {}
 
-  /**
-   * Create a new custody arrangement
-   */
   async createCustody(
-    petId: string,
-    holderId: string,
-    type: string,
-    startDate: Date,
-    depositAmount?: number,
-  ) {
-    return this.prisma.$transaction(async (tx) => {
-      const pet = await tx.pet.findUnique({
-        where: { id: petId },
-      });
+    userId: string,
+    dto: CreateCustodyDto,
+  ): Promise<CustodyResponseDto> {
+    const { petId, startDate, durationDays, depositAmount } = dto;
 
-      if (!pet) {
-        throw new NotFoundException('Pet not found');
-      }
-
-      const activeCustody = await tx.custody.findFirst({
-        where: {
-          petId,
-          status: CustodyStatus.ACTIVE,
-        },
-      });
-
-      if (activeCustody) {
-        throw new ConflictException('Pet is already in custody');
-      }
-
-      const custody = await tx.custody.create({
-        data: {
-          petId,
-          holderId,
-          type: type as any,
-          startDate,
-          depositAmount: depositAmount ? depositAmount.toString() : undefined,
-          status: CustodyStatus.ACTIVE,
-        },
-      });
-
-      await this.events.logEvent({
-        entityType: EventEntityType.CUSTODY,
-        entityId: custody.id,
-        eventType: EventType.CUSTODY_STARTED,
-        actorId: holderId,
-        payload: { petId },
-      });
-
-      // Log availability change due to custody start
-      const oldAvailability = await this.availabilityService.resolve(petId);
-      await this.availabilityService.logAvailabilityChange(
-        petId,
-        oldAvailability,
-        await this.availabilityService.resolve(petId),
-        'custody_started',
-        holderId,
-      );
-
-      return custody;
-    });
-  }
-
-  /**
-   * Update custody status and trigger availability recalculation
-   */
-  async updateCustodyStatus(
-    custodyId: string,
-    newStatus: CustodyStatus,
-    actorId?: string,
-  ) {
-    const custody = await this.prisma.custody.findUnique({
-      where: { id: custodyId },
+    // Validate pet exists
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
     });
 
-    if (!custody) {
-      throw new NotFoundException('Custody not found');
+    if (!pet) {
+      throw new NotFoundException(`Pet with id ${petId} not found`);
     }
 
-    const oldAvailability = await this.availabilityService.resolve(custody.petId);
-
-    const updatedCustody = await this.prisma.custody.update({
-      where: { id: custodyId },
-      data: { 
-        status: newStatus,
-        endDate: newStatus !== CustodyStatus.ACTIVE ? new Date() : undefined,
-      },
-    });
-
-    // Log the custody status change event
-    await this.events.logEvent({
-      entityType: EventEntityType.CUSTODY,
-      entityId: custodyId,
-      eventType: EventType.CUSTODY_RETURNED,
-      actorId,
-      payload: { oldStatus: custody.status, newStatus },
-    });
-
-    // Log availability change
-    const newAvailability = await this.availabilityService.resolve(custody.petId);
-    await this.availabilityService.logAvailabilityChange(
-      custody.petId,
-      oldAvailability,
-      newAvailability,
-      `custody_status_changed_to_${newStatus}`,
-      actorId,
-    );
-
-    return updatedCustody;
-  }
-
-  /**
-   * Get active custody for a pet
-   */
-  async getActiveCustody(petId: string) {
-    return this.prisma.custody.findFirst({
+    // Check if pet is adopted (has a completed adoption)
+    const completedAdoption = await this.prisma.adoption.findFirst({
       where: {
         petId,
-        status: CustodyStatus.ACTIVE,
-      },
-      include: {
-        holder: true,
-        pet: true,
+        status: 'COMPLETED',
       },
     });
-  }
 
-  /**
-   * Get all custodies for a user
-   */
-  async getUserCustodies(userId: string) {
-    return this.prisma.custody.findMany({
-      where: { holderId: userId },
-      include: {
-        pet: true,
+    if (completedAdoption) {
+      throw new BadRequestException('Pet is already adopted');
+    }
+
+    // Check if pet has an active adoption in progress
+    const activeAdoption = await this.prisma.adoption.findFirst({
+      where: {
+        petId,
+        status: {
+          in: ['REQUESTED', 'PENDING', 'APPROVED', 'ESCROW_FUNDED'],
+        },
       },
-      orderBy: { createdAt: 'desc' },
     });
+
+    if (activeAdoption) {
+      throw new BadRequestException(
+        'Pet has an active adoption in progress',
+      );
+    }
+
+    // Check if pet has an active custody
+    const activeCustody = await this.prisma.custody.findFirst({
+      where: {
+        petId,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (activeCustody) {
+      throw new BadRequestException(
+        'Pet already has an active custody agreement',
+      );
+    }
+
+    // Validate startDate is not in the past
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Set to start of day for comparison
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+
+    if (start < now) {
+      throw new BadRequestException('Start date cannot be in the past');
+    }
+
+    // Validate durationDays range (1-90)
+    if (durationDays < 1 || durationDays > 90) {
+      throw new BadRequestException(
+        'Duration must be between 1 and 90 days',
+      );
+    }
+
+    // Calculate endDate
+    const startDateObj = new Date(startDate);
+    const endDate = new Date(startDateObj);
+    endDate.setDate(endDate.getDate() + durationDays);
+
+    // Create custody record with transaction
+    // If depositAmount is provided, also create escrow
+    const custody = await this.prisma.$transaction(async (tx) => {
+      let escrowId: string | null = null;
+
+      // Create escrow if deposit amount is provided
+      if (depositAmount !== undefined && depositAmount !== null) {
+        const escrow = await this.escrowService.createEscrow(
+          depositAmount,
+          tx,
+        );
+        escrowId = escrow.id;
+      }
+
+      // Create custody record
+      const custodyRecord = await tx.custody.create({
+        data: {
+          status: 'PENDING',
+          type: 'TEMPORARY',
+          holderId: userId,
+          petId,
+          startDate: startDateObj,
+          endDate,
+          depositAmount: depositAmount ?? null,
+          escrowId,
+        },
+        include: {
+          pet: true,
+        },
+      });
+
+      return custodyRecord;
+    });
+
+    // Log custody creation event
+    await this.eventsService.logEvent({
+      entityType: 'CUSTODY',
+      entityId: custody.id,
+      eventType: 'CUSTODY_STARTED',
+      actorId: userId,
+      payload: {
+        petId: custody.petId,
+        startDate: custody.startDate,
+        endDate: custody.endDate,
+        depositAmount: custody.depositAmount,
+      },
+    });
+
+    return custody as CustodyResponseDto;
   }
 }
