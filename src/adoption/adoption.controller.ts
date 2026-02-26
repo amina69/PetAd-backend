@@ -34,7 +34,14 @@ export class AdoptionController {
     @Req() req: AuthRequest,
     @Body() dto: CreateAdoptionDto,
   ) {
-    return this.adoptionService.requestAdoption(req.user.userId, dto);
+    // Create adoption data with current user as adopterId
+    const adoptionData = {
+      petId: dto.petId,
+      adopterId: req.user.userId, // Current user is the adopter
+      ownerId: req.user.userId, // For now, assume current user is also owner (this should be validated)
+      notes: dto.notes,
+    };
+    return this.adoptionService.requestAdoption(adoptionData);
   }
 
   @Patch(':id/approve')

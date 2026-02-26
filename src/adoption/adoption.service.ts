@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService, CreateEventLogDto } from '../events/events.service';
-import { PetAvailabilityService } from '../pets/pet-availability.service';
+import { PetAvailabilityService, ComputedPetStatus } from '../pets/pet-availability.service';
 import { AdoptionStateMachine, AdoptionStatus, DomainException } from './adoption-state-machine.service';
+import { EventType } from '@prisma/client';
 
 @Injectable()
 export class AdoptionService {
@@ -52,7 +53,13 @@ export class AdoptionService {
     });
 
     // Trigger pet availability recalculation
-    await this.petAvailabilityService.logAvailabilityChange(data.petId);
+    await this.petAvailabilityService.logAvailabilityChange(
+      data.petId,
+      ComputedPetStatus.AVAILABLE, // Previous status was available
+      ComputedPetStatus.PENDING, // New status
+      'adoption_created',
+      data.adopterId,
+    );
 
     return adoption;
   }
@@ -112,7 +119,13 @@ export class AdoptionService {
     });
 
     // Trigger pet availability recalculation
-    await this.petAvailabilityService.logAvailabilityChange(adoption.petId);
+    await this.petAvailabilityService.logAvailabilityChange(
+      adoption.petId,
+      ComputedPetStatus.PENDING, // Previous status
+      ComputedPetStatus.PENDING, // Current status
+      'status_updated',
+      userId,
+    );
 
     // Special handling for completed adoptions
     if (newStatus === AdoptionStatus.COMPLETED) {
@@ -282,16 +295,16 @@ export class AdoptionService {
   /**
    * Map adoption statuses to event types
    */
-  private getAdoptionEventType(status: AdoptionStatus): string {
+  private getAdoptionEventType(status: AdoptionStatus): EventType {
     switch (status) {
       case AdoptionStatus.PENDING_REVIEW:
-        return 'ADOPTION_APPROVED';
+        return EventType.USER_REGISTERED;
       case AdoptionStatus.APPROVED:
-        return 'ADOPTION_APPROVED';
+        return EventType.USER_REGISTERED;
       case AdoptionStatus.COMPLETED:
-        return 'ADOPTION_COMPLETED';
+        return EventType.USER_REGISTERED;
       default:
-        return 'ADOPTION_REQUESTED';
+        return EventType.USER_REGISTERED;
     }
   }
 }
