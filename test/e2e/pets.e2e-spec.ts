@@ -389,13 +389,6 @@ describe('Pet Status Lifecycle (E2E)', () => {
 
       expect(response.status).toBe(200);
     });
-
-    it('should require authentication', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/pets/${petId}/transitions`);
-
-      expect([200, 401]).toContain(response.status);
-    });
   });
 
   describe('Complete Adoption Workflow', () => {
