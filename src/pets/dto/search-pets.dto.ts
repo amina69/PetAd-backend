@@ -1,7 +1,8 @@
 import { IsOptional, IsInt, Min, Max, IsEnum, IsString } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PetSpecies, PetGender, PetSize, PetStatus } from '../../common/enums';
+import { PetSpecies, PetGender, PetSize } from '../../common/enums';
+import { ComputedPetStatus } from '../pet-availability.service';
 
 /**
  * Search and Pagination DTO for Pets
@@ -66,13 +67,13 @@ export class SearchPetsDto {
   size?: PetSize;
 
   @ApiPropertyOptional({
-    enum: PetStatus,
+    enum: ComputedPetStatus,
     description: 'Filter by status (defaults to AVAILABLE for public)',
-    example: PetStatus.AVAILABLE,
+    example: ComputedPetStatus.AVAILABLE,
   })
   @IsOptional()
-  @IsEnum(PetStatus, { message: 'Invalid status value' })
-  status?: PetStatus;
+  @IsEnum(ComputedPetStatus, { message: 'Invalid status value' })
+  status?: ComputedPetStatus;
 
   @ApiPropertyOptional({
     description: 'Search by name or breed (case-insensitive)',
