@@ -64,7 +64,6 @@ describe('Pet Pagination (E2E)', () => {
           age: (i % 10) + 1,
           description: `Test pet number ${i}`,
           imageUrl: `https://example.com/pet${i}.jpg`,
-          status: PetStatus.AVAILABLE,
           currentOwnerId: userId,
         },
       });

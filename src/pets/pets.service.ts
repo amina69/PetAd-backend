@@ -1,11 +1,7 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { StatusTransitionValidator } from './validators/status-transition.validator';
-import { UserRole, PetStatus } from '../common/enums';
+import { UserRole } from '../common/enums';
+import { ComputedPetStatus, PetAvailabilityService } from './pet-availability.service';
 import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
 import { SearchPetsDto } from './dto/search-pets.dto';
@@ -21,214 +17,20 @@ import { Prisma } from '@prisma/client';
  */
 @Injectable()
 export class PetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly availabilityService: PetAvailabilityService,
+  ) {}
 
   /**
-   * Get pet by ID
+   * Get pet by ID with computed availability
    * @param petId - The pet's ID
    * @throws NotFoundException if pet doesn't exist
    */
   async getPetById(petId: string) {
-    const pet = await this.prisma.pet.findUnique({
-      where: { id: petId },
-      include: { currentOwner: true },
-    });
-
-    if (!pet) {
-      throw new NotFoundException(`Pet with ID ${petId} not found`);
-    }
-
-    return pet;
+    return this.availabilityService.getPetWithAvailability(petId);
   }
 
-  /**
-   * Update pet status with validation
-   * Enforces state machine transitions
-   *
-   * @param petId - The pet's ID
-   * @param newStatus - The desired new status
-   * @param userId - The user making the change (for authorization)
-   * @param userRole - The user's role (ADMIN, USER, SHELTER)
-   * @param reason - Optional reason for the status change (logged in audit)
-   * @throws BadRequestException if transition is invalid
-   * @throws NotFoundException if pet doesn't exist
-   * @throws ForbiddenException if user not authorized
-   * @returns Updated pet with new status
-   *
-   * @example
-   * // Approve adoption (change PENDING → ADOPTED)
-   * await petsService.updatePetStatus(
-   *   petId,
-   *   PetStatus.ADOPTED,
-   *   userId,
-   *   UserRole.ADMIN,
-   *   'Adoption approved by admin'
-   * );
-   *
-   * // Complete custody (change IN_CUSTODY → AVAILABLE)
-   * await petsService.updatePetStatus(
-   *   petId,
-   *   PetStatus.AVAILABLE,
-   *   userId,
-   *   UserRole.ADMIN,
-   *   'Custody period completed'
-   * );
-   *
-   * // Admin override: Return adopted pet
-   * await petsService.updatePetStatus(
-   *   petId,
-   *   PetStatus.AVAILABLE,
-   *   adminUserId,
-   *   UserRole.ADMIN,
-   *   'Returned by admin - adoption cancelled'
-   * );
-   */
-  async updatePetStatus(
-    petId: string,
-    newStatus: PetStatus,
-    userId: string,
-    userRole: UserRole,
-    reason?: string,
-  ) {
-    const pet = await this.getPetById(petId);
-
-    // Validate the transition (cast Prisma status to our enum)
-    StatusTransitionValidator.validate(
-      pet.status as PetStatus,
-      newStatus,
-      userRole,
-    );
-
-    // Additional authorization checks for sensitive transitions
-    this.authorizeStatusUpdate(pet, newStatus, userId, userRole);
-
-    // Perform the update
-    const updatedPet = await this.prisma.pet.update({
-      where: { id: petId },
-      data: {
-        status: newStatus,
-        updatedAt: new Date(),
-      },
-      include: { currentOwner: true },
-    });
-
-    // Log the status change for audit trail
-    this.logStatusChange(
-      petId,
-      pet.status as PetStatus,
-      newStatus,
-      userId,
-      reason,
-    );
-
-    return updatedPet;
-  }
-
-  /**
-   * Get allowed status transitions for a pet
-   * Useful for UI to show available actions
-   *
-   * @param petId - The pet's ID
-   * @param userRole - The user's role (optional, to show admin-only transitions)
-   */
-  async getAllowedTransitions(petId: string, userRole?: UserRole) {
-    const pet = await this.getPetById(petId);
-    return StatusTransitionValidator.getAllowedTransitions(
-      pet.status as PetStatus,
-      userRole,
-    );
-  }
-
-  /**
-   * Get transition information for a pet
-   * Includes current status, allowed transitions, and descriptions
-   */
-  async getTransitionInfo(petId: string) {
-    const pet = await this.getPetById(petId);
-    return StatusTransitionValidator.getTransitionInfo(pet.status as PetStatus);
-  }
-
-  /**
-   * Change pet status (internal use by adoption/custody services)
-   * Called automatically when adoption/custody workflows trigger status changes
-   *
-   * @internal This should be called by adoption/custody services
-   */
-  async changeStatusInternal(
-    petId: string,
-    newStatus: PetStatus,
-    reason?: string,
-  ) {
-    const pet = await this.getPetById(petId);
-
-    // Validate transition (without role restriction for internal calls)
-    StatusTransitionValidator.validate(
-      pet.status as PetStatus,
-      newStatus,
-      UserRole.ADMIN,
-    );
-
-    const updatedPet = await this.prisma.pet.update({
-      where: { id: petId },
-      data: {
-        status: newStatus,
-        updatedAt: new Date(),
-      },
-      include: { currentOwner: true },
-    });
-
-    // Log the change
-    this.logStatusChange(
-      petId,
-      pet.status as PetStatus,
-      newStatus,
-      undefined, // No user actor for system changes
-      reason || 'System-triggered status change',
-    );
-
-    return updatedPet;
-  }
-
-  /**
-   * Authorize status update based on user role and pet ownership
-   * @private
-   */
-  private authorizeStatusUpdate(
-    _pet: any,
-    newStatus: PetStatus,
-    _userId: string,
-    userRole: UserRole,
-  ) {
-    // Only ADMIN can perform certain transitions
-    if (newStatus === PetStatus.ADOPTED || newStatus === PetStatus.AVAILABLE) {
-      if (userRole !== UserRole.ADMIN) {
-        throw new ForbiddenException(
-          `Only administrators can change pet status to ${newStatus}`,
-        );
-      }
-    }
-
-    // Pet owner can initiate some transitions (for future enhancement)
-    // For now, most transitions require ADMIN
-  }
-
-  /**
-   * Log status change for audit trail
-   * @private
-   */
-  private logStatusChange(
-    petId: string,
-    oldStatus: PetStatus,
-    newStatus: PetStatus,
-    userId?: string,
-    reason?: string,
-  ) {
-    // TODO: Implement event logging to EventLog table
-    // This will track all status changes for audit purposes
-    console.log(
-      `[PET STATUS CHANGE] ${petId}: ${oldStatus} → ${newStatus}${userId ? ` by ${userId}` : ' (system)'}${reason ? ` - ${reason}` : ''}`,
-    );
-  }
 
   /**
    * Create a new pet
@@ -241,7 +43,6 @@ export class PetsService {
       data: {
         ...createPetDto,
         currentOwnerId: ownerId,
-        status: 'AVAILABLE',
       },
       include: { currentOwner: true },
     });
@@ -263,9 +64,8 @@ export class PetsService {
       search,
     } = searchDto;
 
-    // Build filter conditions
+    // Build filter conditions (filter by computed availability if status specified)
     const where: Prisma.PetWhereInput = {
-      status: status || PetStatus.AVAILABLE, // Default to AVAILABLE for public
       ...(species && { species }),
       ...(gender && { gender }),
       ...(size && { size }),
@@ -280,23 +80,29 @@ export class PetsService {
     // Calculate pagination
     const skip = (page - 1) * limit;
 
-    // Execute queries in parallel for better performance
-    const [data, total] = await Promise.all([
-      this.prisma.pet.findMany({
-        where,
-        skip,
-        take: limit,
-        include: { currentOwner: true },
-        orderBy: { createdAt: 'desc' }, // Most recent first
-      }),
-      this.prisma.pet.count({ where }),
-    ]);
+    // Get pets with computed availability
+    const pets = await this.availabilityService.getPetsWithAvailability({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Filter by computed status if specified
+    const filteredPets = status
+      ? pets.filter(pet => pet.status === status)
+      : pets.filter(pet => pet.status === ComputedPetStatus.AVAILABLE); // Default to AVAILABLE for public
+
+    // Get total count for pagination
+    const total = status
+      ? await this.countPetsByStatus(where, status)
+      : await this.countPetsByStatus(where, ComputedPetStatus.AVAILABLE);
 
     // Build metadata
     const meta = new PaginationMetaDto(page, limit, total);
 
     // Return paginated response
-    return new PaginatedResponseDto(data, meta);
+    return new PaginatedResponseDto(filteredPets, meta);
   }
 
   /**
@@ -306,12 +112,7 @@ export class PetsService {
    * @throws NotFoundException if pet doesn't exist
    */
   async findOne(id: string) {
-    const pet = await this.prisma.pet.findUnique({
-      where: { id },
-      include: { currentOwner: true },
-    });
-    if (!pet) throw new NotFoundException('Pet not found');
-    return pet;
+    return this.availabilityService.getPetWithAvailability(id);
   }
 
   /**
@@ -334,11 +135,15 @@ export class PetsService {
     if (!pet) throw new NotFoundException('Pet not found');
     if (pet.currentOwnerId !== userId && userRole !== 'ADMIN')
       throw new ForbiddenException('Not authorized');
-    return this.prisma.pet.update({
+    
+    const updatedPet = await this.prisma.pet.update({
       where: { id },
       data: updatePetDto,
       include: { currentOwner: true },
     });
+
+    // Return with computed availability
+    return this.availabilityService.getPetWithAvailability(id);
   }
 
   /**
@@ -356,5 +161,17 @@ export class PetsService {
       throw new ForbiddenException('Only admin can delete');
     await this.prisma.pet.delete({ where: { id } });
     return { message: 'Pet deleted successfully' };
+  }
+
+  /**
+   * Count pets by computed status
+   * @private
+   */
+  private async countPetsByStatus(
+    where: Prisma.PetWhereInput,
+    status: ComputedPetStatus,
+  ): Promise<number> {
+    const pets = await this.availabilityService.getPetsWithAvailability({ where });
+    return pets.filter(pet => pet.status === status).length;
   }
 }
