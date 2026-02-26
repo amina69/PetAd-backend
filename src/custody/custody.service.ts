@@ -8,6 +8,7 @@ import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
+import { CustodyStatus } from '@prisma/client';
 
 @Injectable()
 export class CustodyService {
@@ -113,7 +114,7 @@ export class CustodyService {
       // Create custody record
       const custodyRecord = await tx.custody.create({
         data: {
-          status: 'PENDING',
+          status: CustodyStatus.PENDING,
           type: 'TEMPORARY',
           holderId: userId,
           petId,
