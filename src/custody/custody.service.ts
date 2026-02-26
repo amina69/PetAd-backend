@@ -6,8 +6,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
+import { TrustScoreService } from '../users/trust-score.service';
+import { PetsService } from '../pets/pets.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
+import { CustodyStatus, PetStatus } from '@prisma/client';
 
 @Injectable()
 export class CustodyService {
@@ -15,6 +18,8 @@ export class CustodyService {
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
+    private readonly trustScoreService: TrustScoreService,
+    private readonly petsService: PetsService,
   ) {}
 
   async createCustody(
@@ -145,5 +150,201 @@ export class CustodyService {
     });
 
     return custody as CustodyResponseDto;
+  }
+
+  async returnCustody(
+    custodyId: string,
+    userId: string,
+  ): Promise<CustodyResponseDto> {
+    // Fetch custody with relations
+    const custody = await this.prisma.custody.findUnique({
+      where: { id: custodyId },
+      include: {
+        pet: true,
+        holder: true,
+        escrow: true,
+      },
+    });
+
+    if (!custody) {
+      throw new NotFoundException(`Custody with id ${custodyId} not found`);
+    }
+
+    // Validate custody is ACTIVE
+    if (custody.status !== CustodyStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Custody must be ACTIVE to return. Current status: ${custody.status}`,
+      );
+    }
+
+    // Validate user is the holder
+    if (custody.holderId !== userId) {
+      throw new BadRequestException(
+        'Only the custody holder can return the pet',
+      );
+    }
+
+    // Execute return in transaction
+    const updatedCustody = await this.prisma.$transaction(async (tx) => {
+      // Update custody status to RETURNED
+      const returned = await tx.custody.update({
+        where: { id: custodyId },
+        data: {
+          status: CustodyStatus.RETURNED,
+          updatedAt: new Date(),
+        },
+        include: {
+          pet: true,
+          holder: true,
+          escrow: true,
+        },
+      });
+
+      // Release escrow if exists
+      if (custody.escrowId) {
+        await this.escrowService.releaseEscrow(custody.escrowId, tx);
+
+        // Log escrow release event
+        await this.eventsService.logEvent({
+          entityType: 'ESCROW',
+          entityId: custody.escrowId,
+          eventType: 'ESCROW_RELEASED',
+          actorId: userId,
+          payload: {
+            custodyId,
+            amount: custody.depositAmount,
+            reason: 'Successful custody return',
+          },
+        });
+      }
+
+      return returned;
+    });
+
+    // Log custody return event
+    await this.eventsService.logEvent({
+      entityType: 'CUSTODY',
+      entityId: custodyId,
+      eventType: 'CUSTODY_RETURNED',
+      actorId: userId,
+      payload: {
+        petId: custody.petId,
+        holderId: custody.holderId,
+        startDate: custody.startDate,
+        endDate: custody.endDate,
+        depositAmount: custody.depositAmount,
+        escrowReleased: !!custody.escrowId,
+      },
+    });
+
+    // Reward trust score for successful custody
+    await this.trustScoreService.rewardSuccessfulCustody(
+      custody.holderId,
+      custodyId,
+    );
+
+    // Update pet status back to AVAILABLE
+    await this.petsService.changeStatusInternal(
+      custody.petId,
+      PetStatus.AVAILABLE,
+      `Custody ${custodyId} returned successfully`,
+    );
+
+    return updatedCustody as CustodyResponseDto;
+  }
+
+  async violationCustody(
+    custodyId: string,
+    adminUserId: string,
+    reason?: string,
+  ): Promise<CustodyResponseDto> {
+    // Fetch custody with relations
+    const custody = await this.prisma.custody.findUnique({
+      where: { id: custodyId },
+      include: {
+        pet: true,
+        holder: true,
+        escrow: true,
+      },
+    });
+
+    if (!custody) {
+      throw new NotFoundException(`Custody with id ${custodyId} not found`);
+    }
+
+    // Validate custody is ACTIVE
+    if (custody.status !== CustodyStatus.ACTIVE) {
+      throw new BadRequestException(
+        `Custody must be ACTIVE to mark as violation. Current status: ${custody.status}`,
+      );
+    }
+
+    // Execute violation in transaction
+    const updatedCustody = await this.prisma.$transaction(async (tx) => {
+      // Update custody status to VIOLATION
+      const violated = await tx.custody.update({
+        where: { id: custodyId },
+        data: {
+          status: CustodyStatus.VIOLATION,
+          updatedAt: new Date(),
+        },
+        include: {
+          pet: true,
+          holder: true,
+          escrow: true,
+        },
+      });
+
+      // Refund escrow if exists (deposit is forfeited, goes back to pet owner)
+      if (custody.escrowId) {
+        await this.escrowService.refundEscrow(custody.escrowId, tx);
+
+        // Log escrow refund event
+        await this.eventsService.logEvent({
+          entityType: 'ESCROW',
+          entityId: custody.escrowId,
+          eventType: 'ESCROW_RELEASED',
+          actorId: adminUserId,
+          payload: {
+            custodyId,
+            amount: custody.depositAmount,
+            reason: reason || 'Custody violation - deposit forfeited',
+          },
+        });
+      }
+
+      return violated;
+    });
+
+    // Log custody violation event
+    await this.eventsService.logEvent({
+      entityType: 'CUSTODY',
+      entityId: custodyId,
+      eventType: 'CUSTODY_RETURNED',
+      actorId: adminUserId,
+      payload: {
+        petId: custody.petId,
+        holderId: custody.holderId,
+        violation: true,
+        reason: reason || 'Custody violation',
+        depositAmount: custody.depositAmount,
+        escrowRefunded: !!custody.escrowId,
+      },
+    });
+
+    // Penalize trust score for violation
+    await this.trustScoreService.penalizeViolation(
+      custody.holderId,
+      custodyId,
+    );
+
+    // Update pet status back to AVAILABLE
+    await this.petsService.changeStatusInternal(
+      custody.petId,
+      PetStatus.AVAILABLE,
+      `Custody ${custodyId} ended due to violation: ${reason || 'unspecified'}`,
+    );
+
+    return updatedCustody as CustodyResponseDto;
   }
 }
