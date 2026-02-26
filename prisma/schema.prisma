@@ -33,6 +33,7 @@ enum AdoptionStatus {
 }
 
 enum CustodyStatus {
+  PENDING
   ACTIVE
   RETURNED
   CANCELLED
@@ -75,6 +76,17 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
+enum PetGender {
+  MALE
+  FEMALE
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -86,8 +98,6 @@ model User {
   role      UserRole @default(USER)
 
   trustScore Float @default(50)
-
-
 
   stellarPublicKey String? @unique @map("stellar_public_key")
   avatarUrl        String? @map("avatar_url")
@@ -102,21 +112,23 @@ model User {
 
   custodiesHeld Custody[] @relation("CustodyHolder")
 
-
-  events EventLog[] @relation("ActorEvents")
+  events    EventLog[] @relation("ActorEvents")
+  documents Document[]
 
   @@map("users")
 }
 
 model Pet {
-
-  id          String      @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   species     PetSpecies
   breed       String?
   age         Int?
   description String?
   imageUrl    String?    @map("image_url")
+
+  gender PetGender? // Optional gender field
+  size   PetSize? // Optional size field
 
   currentOwnerId String? @map("current_owner_id")
   currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
@@ -133,7 +145,6 @@ model Pet {
 }
 
 model Adoption {
-
   id     String         @id @default(uuid())
   status AdoptionStatus @default(REQUESTED)
   notes  String?
@@ -150,8 +161,9 @@ model Adoption {
   escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  documents Document[]
 
   @@index([status])
   @@index([adopterId])
@@ -160,10 +172,9 @@ model Adoption {
 }
 
 model Custody {
-  
-  id       String        @id @default(uuid())
-  status   CustodyStatus @default(ACTIVE)
-  type     CustodyType
+  id     String        @id @default(uuid())
+  status CustodyStatus @default(ACTIVE)
+  type   CustodyType
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
@@ -237,4 +248,25 @@ model EventLog {
   @@index([eventType])
   @@index([createdAt])
   @@map("event_logs")
+}
+
+model Document {
+  id       String @id @default(uuid())
+  fileName String @map("file_name")
+  fileUrl  String @map("file_url")
+  publicId String @map("public_id")
+  mimeType String @map("mime_type")
+  size     Int
+
+  uploadedById String @map("uploaded_by_id")
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  adoptionId String?   @map("adoption_id")
+  adoption   Adoption? @relation(fields: [adoptionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([uploadedById])
+  @@index([adoptionId])
+  @@map("documents")
 }

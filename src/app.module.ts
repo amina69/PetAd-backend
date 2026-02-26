@@ -12,6 +12,8 @@ import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { UsersModule } from './users/users.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     AuthModule,
     HealthModule,
     CloudinaryModule,
+    UsersModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
