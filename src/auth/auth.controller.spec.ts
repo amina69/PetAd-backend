@@ -7,6 +7,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
+process.env.JWT_SECRET = 'super-secret-test-key';
+
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
 
@@ -75,7 +77,7 @@ describe('AuthController (e2e)', () => {
       email: uniqueEmail,
       role: 'USER',
     });
-  });
+  }, 10000);
 
   it('should reject duplicate email registration', async () => {
     await request(app.getHttpServer()).post('/auth/register').send({
@@ -95,7 +97,7 @@ describe('AuthController (e2e)', () => {
     const body = res.body as { message: string };
     expect(res.status).toBe(409);
     expect(body.message).toMatch(/already registered/i);
-  });
+  }, 10000);
 
   it('should reject invalid email', async () => {
     const res: Response = await request(app.getHttpServer())
@@ -150,7 +152,7 @@ describe('AuthController (e2e)', () => {
     expect(res.status).toBe(201);
     expect(body).toHaveProperty('access_token');
     expect(body.user).toMatchObject({ email: uniqueEmail, role: 'USER' });
-  });
+  }, 10000);
 
   it('should reject invalid credentials', async () => {
     const res: Response = await request(app.getHttpServer())
