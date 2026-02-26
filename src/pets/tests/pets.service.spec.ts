@@ -1,407 +1,215 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  BadRequestException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { PetsService } from '../pets.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PetStatus, UserRole } from '../../common/enums';
+import { UserRole, PetSpecies } from '../../common/enums';
+import { ComputedPetStatus, PetAvailabilityService } from '../pet-availability.service';
 
-describe('PetsService - Status Lifecycle', () => {
+describe('PetsService', () => {
   let service: PetsService;
-
-  const mockPrisma = {
-    pet: {
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
-  };
+  let mockPrisma: any;
+  let mockAvailabilityService: any;
 
   const mockPet = {
     id: '550e8400-e29b-41d4-a716-446655440000',
     name: 'Buddy',
-    species: 'DOG',
+    species: PetSpecies.DOG,
     breed: 'Golden Retriever',
     age: 3,
     description: 'Friendly dog',
     imageUrl: 'https://example.com/buddy.jpg',
-    status: 'AVAILABLE' as PetStatus,
     currentOwnerId: '550e8400-e29b-41d4-a716-446655440001',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    currentOwner: {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      email: 'owner@example.com',
-    },
   };
 
-  const userId = '550e8400-e29b-41d4-a716-446655440002';
-  const adminId = '550e8400-e29b-41d4-a716-446655440003';
-
   beforeEach(async () => {
+    mockPrisma = {
+      pet: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+        count: jest.fn(),
+      },
+    };
+
+    mockAvailabilityService = {
+      getPetWithAvailability: jest.fn(),
+      getPetsWithAvailability: jest.fn(),
+      resolve: jest.fn(),
+      resolveBatch: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PetsService,
-        {
-          provide: PrismaService,
-          useValue: mockPrisma,
-        },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PetAvailabilityService, useValue: mockAvailabilityService },
       ],
     }).compile();
 
     service = module.get<PetsService>(PetsService);
-
-    jest.clearAllMocks();
   });
 
-  describe('getPetById', () => {
-    it('should return a pet by ID', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
+  describe('create', () => {
+    it('should create a new pet', async () => {
+      const createDto = {
+        name: 'Buddy',
+        species: PetSpecies.DOG,
+        breed: 'Golden Retriever',
+      };
+      const ownerId = 'owner-123';
+      
+      mockPrisma.pet.create.mockResolvedValue({
+        ...mockPet,
+        ...createDto,
+        currentOwnerId: ownerId,
+      });
 
-      const result = await service.getPetById(mockPet.id);
+      const result = await service.create(createDto, ownerId);
 
-      expect(result).toEqual(mockPet);
-      expect(mockPrisma.pet.findUnique).toHaveBeenCalledWith({
-        where: { id: mockPet.id },
+      expect(mockPrisma.pet.create).toHaveBeenCalledWith({
+        data: {
+          ...createDto,
+          currentOwnerId: ownerId,
+        },
         include: { currentOwner: true },
       });
-    });
-
-    it('should throw NotFoundException if pet does not exist', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(null);
-
-      await expect(service.getPetById('nonexistent-id')).rejects.toThrow(
-        NotFoundException,
-      );
+      expect(result).toMatchObject({
+        ...createDto,
+        currentOwnerId: ownerId,
+      });
     });
   });
 
-  describe('updatePetStatus - Valid Transitions', () => {
-    it('should allow AVAILABLE → PENDING transition (adoption request)', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...mockPet,
-        status: 'PENDING' as PetStatus,
-      });
-
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'PENDING' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Adoption request received',
+  describe('findAll', () => {
+    it('should return paginated results with computed availability', async () => {
+      const mockPets = [mockPet];
+      const availabilityMap = new Map([['pet-1', ComputedPetStatus.AVAILABLE]]);
+      
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(
+        mockPets.map(pet => ({ ...pet, status: ComputedPetStatus.AVAILABLE }))
       );
+      mockAvailabilityService.resolveBatch.mockResolvedValue(availabilityMap);
 
-      expect(result.status).toBe('PENDING' as PetStatus);
-      expect(mockPrisma.pet.update).toHaveBeenCalled();
+      const result = await service.findAll({ page: 1, limit: 10 });
+
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalled();
+      expect(result.data).toHaveLength(1);
     });
 
-    it('should allow AVAILABLE → IN_CUSTODY transition (custody created)', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...mockPet,
-        status: 'IN_CUSTODY' as PetStatus,
-      });
-
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'IN_CUSTODY' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Custody agreement created',
+    it('should filter by computed status', async () => {
+      const mockPets = [mockPet];
+      
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(
+        mockPets.map(pet => ({ ...pet, status: ComputedPetStatus.ADOPTED }))
       );
 
-      expect(result.status).toBe('IN_CUSTODY' as PetStatus);
-    });
+      const result = await service.findAll({ status: ComputedPetStatus.ADOPTED });
 
-    it('should allow PENDING → ADOPTED transition (adoption approved)', async () => {
-      const pendingPet = { ...mockPet, status: 'PENDING' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(pendingPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...pendingPet,
-        status: 'ADOPTED' as PetStatus,
-      });
-
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'ADOPTED' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Adoption approved',
-      );
-
-      expect(result.status).toBe('ADOPTED' as PetStatus);
-    });
-
-    it('should allow PENDING → AVAILABLE transition (adoption rejected)', async () => {
-      const pendingPet = { ...mockPet, status: 'PENDING' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(pendingPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...pendingPet,
-        status: 'AVAILABLE' as PetStatus,
-      });
-
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'AVAILABLE' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Adoption rejected',
-      );
-
-      expect(result.status).toBe('AVAILABLE' as PetStatus);
-    });
-
-    it('should allow IN_CUSTODY → AVAILABLE transition (custody completed)', async () => {
-      const custodyPet = { ...mockPet, status: 'IN_CUSTODY' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(custodyPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...custodyPet,
-        status: 'AVAILABLE' as PetStatus,
-      });
-
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'AVAILABLE' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Custody period completed',
-      );
-
-      expect(result.status).toBe('AVAILABLE' as PetStatus);
+      expect(result.data).toHaveLength(1);
+      expect((result.data as any)[0].status).toBe(ComputedPetStatus.ADOPTED);
     });
   });
 
-  describe('updatePetStatus - Admin-Only Transitions', () => {
-    it('should allow ADMIN to change ADOPTED → AVAILABLE (return pet)', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...adoptedPet,
-        status: 'AVAILABLE' as PetStatus,
-      });
+  describe('findOne', () => {
+    it('should return pet with computed availability', async () => {
+      const petWithAvailability = {
+        ...mockPet,
+        status: ComputedPetStatus.AVAILABLE,
+      };
+      
+      mockAvailabilityService.getPetWithAvailability.mockResolvedValue(petWithAvailability);
 
-      const result = await service.updatePetStatus(
-        mockPet.id,
-        'AVAILABLE' as PetStatus,
-        adminId,
-        UserRole.ADMIN,
-        'Pet returned by adopter',
-      );
+      const result = await service.findOne(mockPet.id);
 
-      expect(result.status).toBe('AVAILABLE' as PetStatus);
+      expect(result).toEqual(petWithAvailability);
+      expect(mockAvailabilityService.getPetWithAvailability).toHaveBeenCalledWith(mockPet.id);
     });
 
-    it('should prevent non-ADMIN from changing status to ADOPTED', async () => {
-      const pendingPet = { ...mockPet, status: 'PENDING' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(pendingPet);
+    it('should throw error if pet not found', async () => {
+      mockAvailabilityService.getPetWithAvailability.mockRejectedValue(
+        new Error('Pet with ID not-found not found')
+      );
+
+      await expect(service.findOne('not-found')).rejects.toThrow(Error);
+    });
+  });
+
+  describe('update', () => {
+    it('should update pet and return with computed availability', async () => {
+      const updateDto = { name: 'Updated Buddy' };
+      const updatedPet = { ...mockPet, ...updateDto };
+      const petWithAvailability = {
+        ...updatedPet,
+        status: ComputedPetStatus.AVAILABLE,
+      };
+      
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        ...mockPet,
+        currentOwnerId: 'owner-123', // Match the userId
+      });
+      mockPrisma.pet.update.mockResolvedValue(updatedPet);
+      mockAvailabilityService.getPetWithAvailability.mockResolvedValue(petWithAvailability);
+
+      const result = await service.update(mockPet.id, updateDto, 'owner-123', 'SHELTER');
+
+      expect(mockPrisma.pet.update).toHaveBeenCalledWith({
+        where: { id: mockPet.id },
+        data: updateDto,
+        include: { currentOwner: true },
+      });
+      expect(result.status).toBe(ComputedPetStatus.AVAILABLE);
+    });
+
+    it('should throw ForbiddenException if not owner or admin', async () => {
+      const updateDto = { name: 'Updated Buddy' };
+      
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        ...mockPet,
+        currentOwnerId: 'different-owner',
+      });
 
       await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'ADOPTED' as PetStatus,
-          userId,
-          UserRole.USER,
-          'Trying to approve adoption as regular user',
-        ),
+        service.update(mockPet.id, updateDto, 'user-123', 'USER')
       ).rejects.toThrow(ForbiddenException);
     });
-  });
 
-  describe('updatePetStatus - Invalid Transitions', () => {
-    it('should block ADOPTED → PENDING transition', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
-
-      await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'PENDING' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should block ADOPTED → IN_CUSTODY transition', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
-
-      await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'IN_CUSTODY' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should block IN_CUSTODY → ADOPTED transition', async () => {
-      const custodyPet = { ...mockPet, status: 'IN_CUSTODY' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(custodyPet);
-
-      await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'ADOPTED' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should block IN_CUSTODY → PENDING transition', async () => {
-      const custodyPet = { ...mockPet, status: 'IN_CUSTODY' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(custodyPet);
-
-      await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'PENDING' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should block same status update (no-op)', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-
-      await expect(
-        service.updatePetStatus(
-          mockPet.id,
-          'AVAILABLE' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-  });
-
-  describe('getAllowedTransitions', () => {
-    it('should return correct transitions for AVAILABLE status', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-
-      const result = await service.getAllowedTransitions(
-        mockPet.id,
-        UserRole.ADMIN,
-      );
-
-      expect(result).toContain('PENDING' as PetStatus);
-      expect(result).toContain('IN_CUSTODY' as PetStatus);
-      expect(result).not.toContain('ADOPTED' as PetStatus);
-    });
-
-    it('should return correct transitions for PENDING status', async () => {
-      const pendingPet = { ...mockPet, status: 'PENDING' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(pendingPet);
-
-      const result = await service.getAllowedTransitions(mockPet.id);
-
-      expect(result).toContain('ADOPTED' as PetStatus);
-      expect(result).toContain('AVAILABLE' as PetStatus);
-    });
-
-    it('should return correct transitions for IN_CUSTODY status', async () => {
-      const custodyPet = { ...mockPet, status: 'IN_CUSTODY' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(custodyPet);
-
-      const result = await service.getAllowedTransitions(mockPet.id);
-
-      expect(result).toEqual(['AVAILABLE' as PetStatus]);
-    });
-
-    it('should include admin-only transitions for ADMIN users', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
-
-      const result = await service.getAllowedTransitions(
-        mockPet.id,
-        UserRole.ADMIN,
-      );
-
-      expect(result).toContain('AVAILABLE' as PetStatus);
-    });
-
-    it('should NOT include admin-only transitions for non-ADMIN users', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
-
-      const result = await service.getAllowedTransitions(
-        mockPet.id,
-        UserRole.USER,
-      );
-
-      expect(result).not.toContain('AVAILABLE' as PetStatus);
-    });
-  });
-
-  describe('getTransitionInfo', () => {
-    it('should return transition info for a pet', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-
-      const result = await service.getTransitionInfo(mockPet.id);
-
-      expect(result).toHaveProperty('currentStatus', 'AVAILABLE' as PetStatus);
-      expect(result).toHaveProperty('allowedTransitions');
-      expect(result).toHaveProperty('description');
-    });
-  });
-
-  describe('changeStatusInternal', () => {
-    it('should change status for internal system calls', async () => {
-      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrisma.pet.update.mockResolvedValue({
-        ...mockPet,
-        status: 'PENDING' as PetStatus,
-      });
-
-      const result = await service.changeStatusInternal(
-        mockPet.id,
-        'PENDING' as PetStatus,
-        'Adoption request received',
-      );
-
-      expect(result.status).toBe('PENDING' as PetStatus);
-      expect(mockPrisma.pet.update).toHaveBeenCalled();
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle pet not found during update', async () => {
+    it('should throw NotFoundException if pet not found', async () => {
+      const updateDto = { name: 'Updated Buddy' };
+      
       mockPrisma.pet.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.updatePetStatus(
-          'nonexistent-id',
-          'PENDING' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        ),
+        service.update('not-found', updateDto, 'user-123', 'USER')
       ).rejects.toThrow(NotFoundException);
     });
+  });
 
-    it('should include descriptive error message for invalid transitions', async () => {
-      const adoptedPet = { ...mockPet, status: 'ADOPTED' as PetStatus };
-      mockPrisma.pet.findUnique.mockResolvedValue(adoptedPet);
+  describe('remove', () => {
+    it('should delete pet if admin', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
+      mockPrisma.pet.delete.mockResolvedValue(mockPet);
 
-      try {
-        await service.updatePetStatus(
-          mockPet.id,
-          'PENDING' as PetStatus,
-          adminId,
-          UserRole.ADMIN,
-        );
-      } catch (error) {
-        if (error instanceof Error) {
-          expect(error.message).toContain('ADOPTED');
-          expect(error.message).toContain('PENDING');
-        } else {
-          throw error;
-        }
-      }
+      const result = await service.remove(mockPet.id, 'ADMIN');
+
+      expect(mockPrisma.pet.delete).toHaveBeenCalledWith({ where: { id: mockPet.id } });
+      expect(result).toEqual({ message: 'Pet deleted successfully' });
+    });
+
+    it('should throw ForbiddenException if not admin', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
+
+      await expect(service.remove(mockPet.id, 'USER')).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if pet not found', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue(null);
+
+      await expect(service.remove('not-found', 'ADMIN')).rejects.toThrow(NotFoundException);
     });
   });
 });

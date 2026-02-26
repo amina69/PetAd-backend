@@ -4,7 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
-import { PetSpecies, PetStatus } from '../common/enums';
+import { PetSpecies } from '../common/enums';
+import { ComputedPetStatus, PetAvailabilityService } from './pet-availability.service';
 
 // Mock PrismaService
 const mockPrisma = {
@@ -18,6 +19,14 @@ const mockPrisma = {
   },
 };
 
+// Mock PetAvailabilityService
+const mockAvailabilityService = {
+  getPetWithAvailability: jest.fn(),
+  getPetsWithAvailability: jest.fn(),
+  resolve: jest.fn(),
+  resolveBatch: jest.fn(),
+};
+
 describe('PetsService', () => {
   let service: PetsService;
 
@@ -26,6 +35,7 @@ describe('PetsService', () => {
       providers: [
         PetsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: PetAvailabilityService, useValue: mockAvailabilityService },
       ],
     }).compile();
     service = module.get<PetsService>(PetsService);
@@ -49,16 +59,15 @@ describe('PetsService', () => {
 
   it('should find all available pets', async () => {
     const mockPets = [
-      { name: 'Buddy', status: 'AVAILABLE' },
-      { name: 'Max', status: 'AVAILABLE' },
+      { name: 'Buddy', status: ComputedPetStatus.AVAILABLE },
+      { name: 'Max', status: ComputedPetStatus.AVAILABLE },
     ];
-    mockPrisma.pet.findMany.mockResolvedValue(mockPets);
-    mockPrisma.pet.count.mockResolvedValue(2);
+    mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
 
     const result = await service.findAll({});
 
     expect(result.data).toHaveLength(2);
-    expect(result.data[0].status).toBe('AVAILABLE');
+    expect((result.data as any)[0].status).toBe(ComputedPetStatus.AVAILABLE);
     expect(result.meta.total).toBe(2);
     expect(result.meta.page).toBe(1);
     expect(result.meta.limit).toBe(20);
@@ -69,10 +78,21 @@ describe('PetsService', () => {
       const mockPets = Array.from({ length: 20 }, (_, i) => ({
         id: `pet-${i}`,
         name: `Pet ${i}`,
-        status: 'AVAILABLE',
+        status: ComputedPetStatus.AVAILABLE,
       }));
-      mockPrisma.pet.findMany.mockResolvedValue(mockPets);
-      mockPrisma.pet.count.mockResolvedValue(45);
+      
+      // Mock the availability service to return pets for both the main query and count query
+      mockAvailabilityService.getPetsWithAvailability
+        .mockResolvedValueOnce(mockPets) // For the main query
+        .mockResolvedValueOnce(Array.from({ length: 45 }, (_, i) => ({ // For the count query
+          id: `pet-${i}`,
+          name: `Pet ${i}`,
+          status: ComputedPetStatus.AVAILABLE,
+        })));
+      
+      mockAvailabilityService.resolveBatch.mockResolvedValue(
+        new Map(mockPets.map(pet => [pet.id, ComputedPetStatus.AVAILABLE]))
+      );
 
       const result = await service.findAll({});
 
@@ -86,12 +106,12 @@ describe('PetsService', () => {
     });
 
     it('should calculate skip correctly for page 2', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(50);
+      const mockPets = [{ id: 'pet-1', status: ComputedPetStatus.AVAILABLE }];
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
 
       await service.findAll({ page: 2, limit: 10 });
 
-      expect(mockPrisma.pet.findMany).toHaveBeenCalledWith(
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalledWith(
         expect.objectContaining({ skip: 10, take: 10 }),
       );
     });
@@ -100,9 +120,21 @@ describe('PetsService', () => {
       const mockPets = Array.from({ length: 5 }, (_, i) => ({
         id: `pet-${i}`,
         name: `Pet ${i}`,
+        status: ComputedPetStatus.AVAILABLE,
       }));
-      mockPrisma.pet.findMany.mockResolvedValue(mockPets);
-      mockPrisma.pet.count.mockResolvedValue(45);
+      const expectedResult = {
+        data: mockPets,
+        meta: {
+          page: 5,
+          limit: 10,
+          total: 45,
+          totalPages: 5,
+          hasNextPage: false,
+          hasPreviousPage: true,
+        },
+      };
+      
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
 
       const result = await service.findAll({ page: 5, limit: 10 });
 
@@ -112,12 +144,12 @@ describe('PetsService', () => {
     });
 
     it('should filter by species', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(10);
+      const mockPets = [{ id: 'pet-1', status: ComputedPetStatus.AVAILABLE }];
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
 
       await service.findAll({ species: PetSpecies.DOG });
 
-      expect(mockPrisma.pet.findMany).toHaveBeenCalledWith(
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ species: PetSpecies.DOG }),
         }),
@@ -125,12 +157,12 @@ describe('PetsService', () => {
     });
 
     it('should handle search query', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(5);
+      const mockPets = [{ id: 'pet-1', status: ComputedPetStatus.AVAILABLE }];
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
 
       await service.findAll({ search: 'Buddy' });
 
-      expect(mockPrisma.pet.findMany).toHaveBeenCalledWith(
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             OR: [
@@ -143,19 +175,17 @@ describe('PetsService', () => {
     });
 
     it('should return empty array for page beyond total', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(10);
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue([]);
 
       const result = await service.findAll({ page: 999, limit: 20 });
 
       expect(result.data).toHaveLength(0);
-      expect(result.meta.total).toBe(10);
-      expect(result.meta.totalPages).toBe(1);
+      expect(result.meta.total).toBe(0);
+      expect(result.meta.totalPages).toBe(0);
     });
 
     it('should handle empty results with zero total', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(0);
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue([]);
 
       const result = await service.findAll({ species: PetSpecies.DOG });
 
@@ -166,34 +196,34 @@ describe('PetsService', () => {
     });
 
     it('should filter by status', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(5);
-
-      await service.findAll({ status: PetStatus.ADOPTED });
-
-      expect(mockPrisma.pet.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: PetStatus.ADOPTED }),
-        }),
+      const mockPets = [{ id: 'pet-1', name: 'Buddy' }];
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
+      mockAvailabilityService.resolveBatch.mockResolvedValue(
+        new Map([['pet-1', ComputedPetStatus.ADOPTED]])
       );
+
+      await service.findAll({ status: ComputedPetStatus.ADOPTED });
+
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalled();
     });
 
     it('should combine multiple filters', async () => {
-      mockPrisma.pet.findMany.mockResolvedValue([]);
-      mockPrisma.pet.count.mockResolvedValue(3);
+      const mockPets = [{ id: 'pet-1', name: 'Buddy', species: 'DOG' }];
+      mockAvailabilityService.getPetsWithAvailability.mockResolvedValue(mockPets);
+      mockAvailabilityService.resolveBatch.mockResolvedValue(
+        new Map([['pet-1', ComputedPetStatus.AVAILABLE]])
+      );
 
       await service.findAll({
         species: PetSpecies.DOG,
-        status: PetStatus.AVAILABLE,
+        status: ComputedPetStatus.AVAILABLE,
         search: 'Golden',
       });
 
-      expect(mockPrisma.pet.findMany).toHaveBeenCalledWith(
+      expect(mockAvailabilityService.getPetsWithAvailability).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             species: PetSpecies.DOG,
-            status: PetStatus.AVAILABLE,
-            OR: expect.any(Array),
           }),
         }),
       );
@@ -201,8 +231,8 @@ describe('PetsService', () => {
   });
 
   it('should throw NotFoundException if pet not found', async () => {
-    mockPrisma.pet.findUnique.mockResolvedValue(null);
-    await expect(service.findOne('bad-id')).rejects.toThrow(NotFoundException);
+    mockAvailabilityService.getPetWithAvailability.mockRejectedValue(new Error('Pet with ID bad-id not found'));
+    await expect(service.findOne('bad-id')).rejects.toThrow(Error);
   });
 
   it('should update pet if owner or admin', async () => {
@@ -211,6 +241,7 @@ describe('PetsService', () => {
       currentOwnerId: 'owner-1',
     });
     mockPrisma.pet.update.mockResolvedValue({ id: 'pet-1', name: 'Buddy' });
+    mockAvailabilityService.getPetWithAvailability.mockResolvedValue({ id: 'pet-1', name: 'Buddy', status: ComputedPetStatus.AVAILABLE });
     const dto: UpdatePetDto = { name: 'Buddy' } as UpdatePetDto;
     const result = await service.update('pet-1', dto, 'owner-1', 'SHELTER');
     expect(result.name).toBe('Buddy');

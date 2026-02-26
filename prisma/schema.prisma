@@ -76,6 +76,7 @@ enum EventEntityType {
 enum EventType {
   USER_REGISTERED
   PET_REGISTERED
+  PET_STATUS_CHANGED
   ADOPTION_REQUESTED
   ADOPTION_APPROVED
   ADOPTION_COMPLETED
@@ -142,7 +143,6 @@ model Pet {
   age         Int?
   description String?
   imageUrl    String?     @map("image_url")
-  status      PetStatus   @default(AVAILABLE)
 
   gender      PetGender?   // Optional gender field
   size        PetSize?     // Optional size field
@@ -157,7 +157,6 @@ model Pet {
   custodies Custody[]
 
   @@index([species])
-  @@index([status])
   @@index([currentOwnerId])
   @@map("pets")
 }
