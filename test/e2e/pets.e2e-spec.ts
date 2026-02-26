@@ -157,7 +157,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
       const updatedPet = await prismaService.pet.findUnique({
         where: { id: petId },
       });
-      expect(updatedPet.status).toBe(PetStatus.PENDING);
+      expect(updatedPet!.status).toBe(PetStatus.PENDING);
     });
 
     it('should allow PENDING → ADOPTED transition (admin)', async () => {
@@ -328,7 +328,7 @@ describe('Pet Status Lifecycle (E2E)', () => {
         .patch(`/pets/${petId}/status`)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          newStatus: pet.status,
+          newStatus: pet!.status,
         });
 
       expect(response.status).toBe(400);
