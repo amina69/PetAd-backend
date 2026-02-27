@@ -37,8 +37,8 @@ export class AdoptionController {
     // Create adoption data with current user as adopterId
     const adoptionData = {
       petId: dto.petId,
-      adopterId: req.user.userId, // Current user is the adopter
-      ownerId: req.user.userId, // For now, assume current user is also owner (this should be validated)
+      adopterId: req.user.sub, // Current user is the adopter
+      ownerId: req.user.sub, // For now, assume current user is also owner (this should be validated)
       notes: dto.notes,
     };
     return this.adoptionService.requestAdoption(adoptionData);
