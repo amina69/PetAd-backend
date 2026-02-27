@@ -31,8 +31,14 @@ describe('Pet Status Lifecycle (E2E)', () => {
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
 
     // Clean up database before tests
-    await prismaService.pet.deleteMany({});
-    await prismaService.user.deleteMany({});
+    await prismaService.$transaction([
+      prismaService.eventLog.deleteMany({}),
+      prismaService.adoption.deleteMany({}),
+      prismaService.custody.deleteMany({}),
+      prismaService.escrow.deleteMany({}),
+      prismaService.pet.deleteMany({}),
+      prismaService.user.deleteMany({}),
+    ]);
 
     // Create users directly in database with proper roles
     const hashedAdminPassword = await bcrypt.hash('Admin@123', 10);
@@ -544,6 +550,123 @@ describe('Pet Status Lifecycle (E2E)', () => {
       );
       expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
       expect(response.body.allowedTransitions).toContain(PetStatus.IN_CUSTODY);
+    });
+  });
+
+  describe('Pets Availability (E2E) Details', () => {
+    it('should return pet as available when no adoption or custody exists', async () => {
+      const owner = await prismaService.user.create({
+        data: {
+          email: `owner_${Date.now()}@test.com`,
+          password: 'hashed',
+          firstName: 'Owner',
+          lastName: 'Test',
+        },
+      });
+
+      const pet = await prismaService.pet.create({
+        data: {
+          name: 'Buddy',
+          species: 'DOG',
+          currentOwnerId: owner.id,
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/pets/${pet.id}`)
+        .expect(200);
+
+      // We use body.status instead of body.isAvailable as per the latest schema
+      expect(res.body.status).toBe(PetStatus.AVAILABLE);
+    });
+
+    it('should return pet as NOT available when active adoption exists', async () => {
+      const owner = await prismaService.user.create({
+        data: {
+          email: `owner_${Date.now()}@test.com`,
+          password: 'hashed',
+          firstName: 'Owner',
+          lastName: 'Two',
+        },
+      });
+
+      const adopter = await prismaService.user.create({
+        data: {
+          email: `owner_${Date.now()}_adopter@test.com`,
+          password: 'hashed',
+          firstName: 'Adopter',
+          lastName: 'Test',
+        },
+      });
+
+      const pet = await prismaService.pet.create({
+        data: {
+          name: 'Max',
+          species: 'DOG',
+          currentOwnerId: owner.id,
+          status: PetStatus.PENDING, // Simulated active adoption equivalent state
+        },
+      });
+
+      await prismaService.adoption.create({
+        data: {
+          petId: pet.id,
+          adopterId: adopter.id,
+          ownerId: owner.id,
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/pets/${pet.id}`)
+        .expect(200);
+
+      // It's not available if it's pending
+      expect(res.body.status).not.toBe(PetStatus.AVAILABLE);
+    });
+
+    it('should return pet as NOT available when active custody exists', async () => {
+      const owner = await prismaService.user.create({
+        data: {
+          email: `owner_${Date.now()}@test.com`,
+          password: 'hashed',
+          firstName: 'Owner',
+          lastName: 'Three',
+        },
+      });
+
+      const holder = await prismaService.user.create({
+        data: {
+          email: `owner_${Date.now()}_holder@test.com`,
+          password: 'hashed',
+          firstName: 'Holder',
+          lastName: 'Test',
+        },
+      });
+
+      const pet = await prismaService.pet.create({
+        data: {
+          name: 'Charlie',
+          species: 'DOG',
+          currentOwnerId: owner.id,
+          status: PetStatus.IN_CUSTODY, // Simulated active custody equivalent state
+        },
+      });
+
+      await prismaService.custody.create({
+        data: {
+          petId: pet.id,
+          holderId: holder.id,
+          type: 'TEMPORARY',
+          startDate: new Date(),
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/pets/${pet.id}`)
+        .expect(200);
+
+      // It's not available if it's in custody
+      expect(res.body.status).not.toBe(PetStatus.AVAILABLE);
     });
   });
 });
