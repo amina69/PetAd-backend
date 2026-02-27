@@ -11,15 +11,23 @@ interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(private config: ConfigService) {
+    const secret =
+      config.get<string>('JWT_SECRET') || 'test-secret';
+
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // eslint-disable-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET') ?? '',
+      secretOrKey: secret,
     });
   }
 
   validate(payload: JwtPayload) {
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.role,
+    };
     return { sub: payload.sub, email: payload.email, role: payload.role };
   }
 }

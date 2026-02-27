@@ -1,5 +1,15 @@
 import {
   Controller,
+  Patch,
+  Param,
+  UseGuards,
+  Req,
+  Body,
+} from '@nestjs/common';
+
+import { AdoptionService } from './adoption.service';
+import { RejectAdoptionDto } from './dto/reject-adoption.dto';
+
   Post,
   Patch,
   Param,
@@ -32,6 +42,8 @@ interface AuthRequest extends Request {
 @Controller('adoption')
 @UseGuards(JwtAuthGuard)
 export class AdoptionController {
+  constructor(private readonly adoptionService: AdoptionService) {}
+
   constructor(
     private readonly adoptionService: AdoptionService,
     private readonly documentsService: DocumentsService,
@@ -60,6 +72,22 @@ export class AdoptionController {
   @Patch(':id/approve')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
+  async approve(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    return this.adoptionService.approve(id, req.user.id);
+  }
+
+  @Patch(':id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  async reject(
+    @Param('id') id: string,
+    @Body() dto: RejectAdoptionDto,
+    @Req() req: any,
+  ) {
+    return this.adoptionService.reject(id, req.user.id, dto.reason);
   approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
     return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
       status: 'APPROVED',
