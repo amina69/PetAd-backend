@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -22,12 +23,8 @@ enum PetSpecies {
   OTHER
 }
 
-enum PetStatus {
-  AVAILABLE
-  PENDING
-  IN_CUSTODY
-  ADOPTED
-}
+
+
 
 enum AdoptionStatus {
   REQUESTED
@@ -41,11 +38,11 @@ enum AdoptionStatus {
 
 
 enum CustodyStatus {
-  PENDING
   ACTIVE
   RETURNED
   CANCELLED
   VIOLATION
+  PENDING
 }
 
 enum CustodyType {
@@ -88,17 +85,11 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
-enum PetGender {
-  MALE
-  FEMALE
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
 }
-
-enum PetSize {
-  SMALL
-  MEDIUM
-  LARGE
-}
-
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -110,8 +101,6 @@ model User {
   role      UserRole @default(USER)
 
   trustScore Float   @default(50)
-
-
 
   stellarPublicKey String? @unique @map("stellar_public_key")
   avatarUrl        String? @map("avatar_url")
@@ -126,8 +115,9 @@ model User {
 
   custodiesHeld Custody[] @relation("CustodyHolder")
 
-
   events EventLog[] @relation("ActorEvents")
+
+  documents Document[]
 
   @@map("users")
 }
@@ -135,7 +125,6 @@ model User {
 
 
 model Pet {
-
   id          String      @id @default(uuid())
   name        String
   species     PetSpecies
@@ -143,10 +132,6 @@ model Pet {
   age         Int?
   description String?
   imageUrl    String?     @map("image_url")
-  status      PetStatus   @default(AVAILABLE)
-
-  gender      PetGender?   // Optional gender field
-  size        PetSize?     // Optional size field
 
   currentOwnerId String?  @map("current_owner_id")
   currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
@@ -158,14 +143,12 @@ model Pet {
   custodies Custody[]
 
   @@index([species])
-  @@index([status])
   @@index([currentOwnerId])
   @@map("pets")
 }
 
 
 model Adoption {
-
   id     String         @id @default(uuid())
   status AdoptionStatus @default(REQUESTED)
   notes  String?
@@ -182,7 +165,7 @@ model Adoption {
   escrowId String?  @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
   
-
+  documents Document[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -195,7 +178,6 @@ model Adoption {
 
 
 model Custody {
-  
   id       String        @id @default(uuid())
   status   CustodyStatus @default(ACTIVE)
   type     CustodyType
@@ -252,6 +234,18 @@ model Escrow {
   @@map("escrows")
 }
 
+
+model AppLog {
+  id        String   @id @default(uuid())
+  level     LogLevel
+  action    String
+  message   String
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+
 model EventLog {
   id          String           @id @default(uuid())
   entityType  EventEntityType  @map("entity_type")
@@ -274,3 +268,20 @@ model EventLog {
   @@index([createdAt])
   @@map("event_logs")
 }
+
+model Document {
+  id           String   @id @default(cuid())
+  fileName     String
+  fileUrl      String
+  publicId     String
+  mimeType     String
+  size         Int
+  uploadedById String
+  adoptionId   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+}
+

@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
-import { EscrowStatus, AdoptionStatus, EventEntityType, EventType, PetStatus } from '@prisma/client';
+import { EscrowStatus, AdoptionStatus, EventEntityType, EventType } from '@prisma/client';
 
 @Injectable()
 export class EscrowService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
-  ) {}
+  ) { }
 
   async createEscrow(amount: number, tx?: any) {
     const prismaClient = tx || this.prisma;
@@ -68,7 +68,6 @@ export class EscrowService {
         await tx.pet.update({
           where: { id: adoption.petId },
           data: {
-            status: PetStatus.ADOPTED,
             currentOwnerId: adoption.adopterId,
           },
         });

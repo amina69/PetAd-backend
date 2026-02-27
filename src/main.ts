@@ -22,9 +22,13 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+app.useGlobalFilters(
+  app.get(HttpExceptionFilter),
+);
 
-  app.useGlobalInterceptors(new LoggingInterceptor());
+// const loggingInterceptor = app.get(LoggingInterceptor);
+// app.useGlobalInterceptors(loggingInterceptor);
+ 
 
   app.useLogger(new AppLogger());
 

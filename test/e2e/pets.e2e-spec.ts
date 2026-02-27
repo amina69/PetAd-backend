@@ -1,673 +1,136 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import * as bcrypt from 'bcryptjs';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { PetStatus, UserRole } from '../../src/common/enums';
+import { PetSpecies } from '../../src/common/enums';
 
-describe('Pet Status Lifecycle (E2E)', () => {
+describe('Pets Availability (E2E)', () => {
   let app: INestApplication;
-  let prismaService: PrismaService;
-  let petId: string;
-  let adminToken: string;
-  let userToken: string;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    prisma = moduleFixture.get(PrismaService);
     await app.init();
-
-    prismaService = moduleFixture.get<PrismaService>(PrismaService);
-
-    // Clean up database before tests
-    await prismaService.$transaction([
-      prismaService.eventLog.deleteMany({}),
-      prismaService.adoption.deleteMany({}),
-      prismaService.custody.deleteMany({}),
-      prismaService.escrow.deleteMany({}),
-      prismaService.pet.deleteMany({}),
-      prismaService.user.deleteMany({}),
-    ]);
-
-    // Create users directly in database with proper roles
-    const hashedAdminPassword = await bcrypt.hash('Admin@123', 10);
-    const hashedUserPassword = await bcrypt.hash('User@123', 10);
-
-    const adminUser = await prismaService.user.create({
-      data: {
-        email: 'admin@test.com',
-        password: hashedAdminPassword,
-        firstName: 'Admin',
-        lastName: 'User',
-        role: UserRole.ADMIN,
-      },
-    });
-
-    const regularUser = await prismaService.user.create({
-      data: {
-        email: 'user@test.com',
-        password: hashedUserPassword,
-        firstName: 'Regular',
-        lastName: 'User',
-        role: UserRole.USER,
-      },
-    });
-
-    // Login to get JWT tokens
-    const adminLoginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email: 'admin@test.com',
-        password: 'Admin@123',
-      });
-
-    adminToken = adminLoginResponse.body.access_token;
-
-    const userLoginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({
-        email: 'user@test.com',
-        password: 'User@123',
-      });
-
-    userToken = userLoginResponse.body.access_token;
-
-    // Create test pet
-    const pet = await prismaService.pet.create({
-      data: {
-        name: 'Buddy',
-        species: 'DOG',
-        breed: 'Golden Retriever',
-        age: 3,
-        description: 'Friendly dog',
-        imageUrl: 'https://example.com/buddy.jpg',
-        status: PetStatus.AVAILABLE,
-        currentOwnerId: regularUser.id,
-      },
-    });
-
-    petId = pet.id;
-  }, 30000);
+  });
 
   afterAll(async () => {
+    await prisma.$disconnect();
     await app.close();
-  }, 30000);
-
-  describe('GET /pets/:id - View pet details', () => {
-    it('should return pet with current status', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}`,
-      );
-
-      expect(response.status).toBe(200);
-      expect(response.body.name).toBe('Buddy');
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
-    });
-
-    it('should allow public access (no auth required)', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}`,
-      );
-
-      expect(response.status).toBe(200);
-    });
-
-    it('should return 404 for non-existent pet', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/nonexistent-id`,
-      );
-
-      expect(response.status).toBe(404);
-    });
   });
 
-  describe('GET /pets/:id/transitions - View allowed transitions', () => {
-    it('should return transition info for a pet', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}/transitions`,
-      );
-
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('currentStatus');
-      expect(response.body).toHaveProperty('allowedTransitions');
-      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
-      expect(response.body.allowedTransitions).toContain(PetStatus.IN_CUSTODY);
+  it('should return pet as available when no adoption or custody exists', async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: `owner_${Date.now()}@test.com`,
+        password: 'hashed',
+        firstName: 'Owner',
+        lastName: 'Test',
+      },
     });
+
+    const pet = await prisma.pet.create({
+      data: {
+        name: 'Buddy',
+        species: PetSpecies.DOG,
+        currentOwnerId: owner.id,
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/pets/${pet.id}`)
+      .expect(200);
+
+    expect(res.body.isAvailable).toBe(true);
   });
 
-  describe('PATCH /pets/:id/status - Valid Transitions', () => {
-    it('should allow AVAILABLE → PENDING transition', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.PENDING,
-          reason: 'Adoption request received',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.PENDING);
-
-      // Verify in database
-      const updatedPet = await prismaService.pet.findUnique({
-        where: { id: petId },
-      });
-      expect(updatedPet!.status).toBe(PetStatus.PENDING);
+  it('should return pet as NOT available when active adoption exists', async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: `owner_${Date.now()}@test.com`,
+        password: 'hashed',
+        firstName: 'Owner',
+        lastName: 'Two',
+      },
     });
 
-    it('should allow PENDING → ADOPTED transition (admin)', async () => {
-      // First move to PENDING
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.PENDING },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.ADOPTED,
-          reason: 'Adoption approved',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.ADOPTED);
+    const adopter = await prisma.user.create({
+      data: {
+        email: `owner_${Date.now()}@test.com`,
+        password: 'hashed',
+        firstName: 'Adopter',
+        lastName: 'Test',
+      },
     });
 
-    it('should allow PENDING → AVAILABLE transition (adoption rejected)', async () => {
-      // Reset to PENDING
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.PENDING },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Adoption request rejected',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+    const pet = await prisma.pet.create({
+      data: {
+        name: 'Max',
+        species: PetSpecies.DOG,
+        currentOwnerId: owner.id,
+      },
     });
 
-    it('should allow AVAILABLE → IN_CUSTODY transition', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.IN_CUSTODY,
-          reason: 'Custody agreement created',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.IN_CUSTODY);
+    await prisma.adoption.create({
+      data: {
+        petId: pet.id,
+        adopterId: adopter.id,
+        ownerId: owner.id,
+      },
     });
 
-    it('should allow IN_CUSTODY → AVAILABLE transition', async () => {
-      // Ensure pet is IN_CUSTODY
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.IN_CUSTODY },
-      });
+    const res = await request(app.getHttpServer())
+      .get(`/pets/${pet.id}`)
+      .expect(200);
 
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Custody period completed',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
-    });
+    expect(res.body.isAvailable).toBe(false);
   });
 
-  describe('PATCH /pets/:id/status - Admin-Only Transitions', () => {
-    it('should allow ADMIN to return ADOPTED pet to AVAILABLE', async () => {
-      // Set to ADOPTED
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.ADOPTED },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Pet returned by adopter - refund processed',
-        });
-
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
+  it('should return pet as NOT available when active custody exists', async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: `owner_${Date.now()}@test.com`,
+        password: 'hashed',
+        firstName: 'Owner',
+        lastName: 'Three',
+      },
     });
 
-    it('should prevent non-admin from changing to ADOPTED status', async () => {
-      // Set to PENDING
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.PENDING },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({
-          newStatus: PetStatus.ADOPTED,
-          reason: 'Trying to approve as regular user',
-        });
-
-      expect(response.status).toBe(403);
-      expect(response.body.message).toContain('administrators');
-    });
-  });
-
-  describe('PATCH /pets/:id/status - Invalid Transitions', () => {
-    it('should block ADOPTED → PENDING transition', async () => {
-      // Set to ADOPTED
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.ADOPTED },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.PENDING,
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.message).toContain('not allowed');
+    const holder = await prisma.user.create({
+      data: {
+        email: `owner_${Date.now()}@test.com`,
+        password: 'hashed',
+        firstName: 'Holder',
+        lastName: 'Test',
+      },
     });
 
-    it('should block ADOPTED → IN_CUSTODY transition', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.IN_CUSTODY,
-        });
-
-      expect(response.status).toBe(400);
+    const pet = await prisma.pet.create({
+      data: {
+        name: 'Charlie',
+        species: PetSpecies.DOG,
+        currentOwnerId: owner.id,
+      },
     });
 
-    it('should block IN_CUSTODY → ADOPTED transition', async () => {
-      // Set to IN_CUSTODY
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.IN_CUSTODY },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.ADOPTED,
-        });
-
-      expect(response.status).toBe(400);
+    await prisma.custody.create({
+      data: {
+        petId: pet.id,
+        holderId: holder.id,
+        type: 'TEMPORARY',
+        startDate: new Date(),
+      },
     });
 
-    it('should block same status update (no-op)', async () => {
-      // Get current status
-      const pet = await prismaService.pet.findUnique({
-        where: { id: petId },
-      });
+    const res = await request(app.getHttpServer())
+      .get(`/pets/${pet.id}`)
+      .expect(200);
 
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: pet!.status,
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body.message).toContain('already');
-    });
-  });
-
-  describe('PATCH /pets/:id/status - Authorization', () => {
-    it('should require authentication to update status', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .send({
-          newStatus: PetStatus.PENDING,
-        });
-
-      expect(response.status).toBe(401);
-    });
-
-    it('should accept valid JWT token', async () => {
-      // This test assumes a valid token can be obtained
-      // In real scenarios, integrate with auth endpoints
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Test',
-        });
-
-      // Should not return 401
-      expect(response.status).not.toBe(401);
-    });
-  });
-
-  describe('PATCH /pets/:id/status - Error Responses', () => {
-    it('should return 400 with clear error message for invalid transition', async () => {
-      // Ensure pet is in ADOPTED status first (can't go to PENDING from here)
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.ADOPTED },
-      });
-
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.PENDING,
-        });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('message');
-      expect(response.body.message).toContain('Cannot change status');
-    });
-
-    it('should return 404 for non-existent pet', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/nonexistent-id/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.PENDING,
-        });
-
-      expect(response.status).toBe(404);
-    });
-
-    it('should validate request body schema', async () => {
-      const response = await request(app.getHttpServer())
-        .patch(`/pets/${petId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: 'INVALID_STATUS',
-        });
-
-      expect(response.status).toBe(400);
-    });
-  });
-
-  describe('GET /pets/:id/transitions/allowed - Role-based Transitions', () => {
-    it('should return different transitions for ADMIN user', async () => {
-      // Set pet to ADOPTED
-      await prismaService.pet.update({
-        where: { id: petId },
-        data: { status: PetStatus.ADOPTED },
-      });
-
-      const response = await request(app.getHttpServer())
-        .get(`/pets/${petId}/transitions/allowed`)
-        .set('Authorization', `Bearer ${adminToken}`);
-
-      expect(response.status).toBe(200);
-      expect(response.body).toContain(PetStatus.AVAILABLE); // Admin can return
-    });
-
-    it('should return restricted transitions for regular user', async () => {
-      const response = await request(app.getHttpServer())
-        .get(`/pets/${petId}/transitions/allowed`)
-        .set('Authorization', `Bearer ${userToken}`);
-
-      expect(response.status).toBe(200);
-      // Regular user should not have admin-only transitions
-    });
-
-    it('should require authentication', async () => {
-      const response = await request(app.getHttpServer()).get(
-        `/pets/${petId}/transitions/allowed`,
-      );
-
-      expect(response.status).toBe(401);
-    });
-  });
-
-  describe('Complete Adoption Workflow', () => {
-    let testPetId: string;
-
-    beforeEach(async () => {
-      // Create a fresh pet for this workflow
-      const pet = await prismaService.pet.create({
-        data: {
-          name: 'Workflow Test Pet',
-          species: 'CAT',
-          breed: 'Persian',
-          status: PetStatus.AVAILABLE,
-        },
-      });
-      testPetId = pet.id;
-    });
-
-    it('should complete full adoption flow', async () => {
-      // 1. View available transitions
-      let response = await request(app.getHttpServer()).get(
-        `/pets/${testPetId}/transitions`,
-      );
-      expect(response.status).toBe(200);
-      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
-
-      // 2. Change to PENDING (adoption request)
-      response = await request(app.getHttpServer())
-        .patch(`/pets/${testPetId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.PENDING,
-          reason: 'Adoption request received',
-        });
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.PENDING);
-
-      // 3. Change to ADOPTED (approval)
-      response = await request(app.getHttpServer())
-        .patch(`/pets/${testPetId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.ADOPTED,
-          reason: 'Adoption approved',
-        });
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.ADOPTED);
-
-      // 4. Admin can return pet if needed
-      response = await request(app.getHttpServer())
-        .patch(`/pets/${testPetId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Pet returned - refund issued',
-        });
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
-    });
-  });
-
-  describe('Complete Custody Workflow', () => {
-    let testPetId: string;
-
-    beforeEach(async () => {
-      // Create a fresh pet for this workflow
-      const pet = await prismaService.pet.create({
-        data: {
-          name: 'Custody Test Pet',
-          species: 'BIRD',
-          breed: 'Parrot',
-          status: PetStatus.AVAILABLE,
-        },
-      });
-      testPetId = pet.id;
-    });
-
-    it('should complete full temporary custody flow', async () => {
-      // 1. Change to IN_CUSTODY
-      let response = await request(app.getHttpServer())
-        .patch(`/pets/${testPetId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.IN_CUSTODY,
-          reason: 'Temporary custody agreement created',
-        });
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.IN_CUSTODY);
-
-      // 2. Return from custody
-      response = await request(app.getHttpServer())
-        .patch(`/pets/${testPetId}/status`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          newStatus: PetStatus.AVAILABLE,
-          reason: 'Custody period completed - pet returned',
-        });
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe(PetStatus.AVAILABLE);
-
-      // 3. Pet is available for new adoption/custody
-      response = await request(app.getHttpServer()).get(
-        `/pets/${testPetId}/transitions`,
-      );
-      expect(response.body.allowedTransitions).toContain(PetStatus.PENDING);
-      expect(response.body.allowedTransitions).toContain(PetStatus.IN_CUSTODY);
-    });
-  });
-
-  describe('Pets Availability (E2E) Details', () => {
-    it('should return pet as available when no adoption or custody exists', async () => {
-      const owner = await prismaService.user.create({
-        data: {
-          email: `owner_${Date.now()}@test.com`,
-          password: 'hashed',
-          firstName: 'Owner',
-          lastName: 'Test',
-        },
-      });
-
-      const pet = await prismaService.pet.create({
-        data: {
-          name: 'Buddy',
-          species: 'DOG',
-          currentOwnerId: owner.id,
-        },
-      });
-
-      const res = await request(app.getHttpServer())
-        .get(`/pets/${pet.id}`)
-        .expect(200);
-
-      // We use body.status instead of body.isAvailable as per the latest schema
-      expect(res.body.status).toBe(PetStatus.AVAILABLE);
-    });
-
-    it('should return pet as NOT available when active adoption exists', async () => {
-      const owner = await prismaService.user.create({
-        data: {
-          email: `owner_${Date.now()}@test.com`,
-          password: 'hashed',
-          firstName: 'Owner',
-          lastName: 'Two',
-        },
-      });
-
-      const adopter = await prismaService.user.create({
-        data: {
-          email: `owner_${Date.now()}_adopter@test.com`,
-          password: 'hashed',
-          firstName: 'Adopter',
-          lastName: 'Test',
-        },
-      });
-
-      const pet = await prismaService.pet.create({
-        data: {
-          name: 'Max',
-          species: 'DOG',
-          currentOwnerId: owner.id,
-          status: PetStatus.PENDING, // Simulated active adoption equivalent state
-        },
-      });
-
-      await prismaService.adoption.create({
-        data: {
-          petId: pet.id,
-          adopterId: adopter.id,
-          ownerId: owner.id,
-        },
-      });
-
-      const res = await request(app.getHttpServer())
-        .get(`/pets/${pet.id}`)
-        .expect(200);
-
-      // It's not available if it's pending
-      expect(res.body.status).not.toBe(PetStatus.AVAILABLE);
-    });
-
-    it('should return pet as NOT available when active custody exists', async () => {
-      const owner = await prismaService.user.create({
-        data: {
-          email: `owner_${Date.now()}@test.com`,
-          password: 'hashed',
-          firstName: 'Owner',
-          lastName: 'Three',
-        },
-      });
-
-      const holder = await prismaService.user.create({
-        data: {
-          email: `owner_${Date.now()}_holder@test.com`,
-          password: 'hashed',
-          firstName: 'Holder',
-          lastName: 'Test',
-        },
-      });
-
-      const pet = await prismaService.pet.create({
-        data: {
-          name: 'Charlie',
-          species: 'DOG',
-          currentOwnerId: owner.id,
-          status: PetStatus.IN_CUSTODY, // Simulated active custody equivalent state
-        },
-      });
-
-      await prismaService.custody.create({
-        data: {
-          petId: pet.id,
-          holderId: holder.id,
-          type: 'TEMPORARY',
-          startDate: new Date(),
-        },
-      });
-
-      const res = await request(app.getHttpServer())
-        .get(`/pets/${pet.id}`)
-        .expect(200);
-
-      // It's not available if it's in custody
-      expect(res.body.status).not.toBe(PetStatus.AVAILABLE);
-    });
+    expect(res.body.isAvailable).toBe(false);
   });
 });
-

@@ -3,7 +3,7 @@ import { EscrowService } from './escrow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotFoundException } from '@nestjs/common';
-import { EscrowStatus, AdoptionStatus, PetStatus, EventType, EventEntityType } from '@prisma/client';
+import { EscrowStatus, AdoptionStatus, EventType, EventEntityType } from '@prisma/client';
 
 describe('EscrowService', () => {
     let service: EscrowService;
@@ -116,7 +116,7 @@ describe('EscrowService', () => {
 
             expect(mockPrismaService.pet.update).toHaveBeenCalledWith({
                 where: { id: mockAdoption.petId },
-                data: { status: PetStatus.ADOPTED, currentOwnerId: mockAdoption.adopterId },
+                data: { currentOwnerId: mockAdoption.adopterId },
             });
 
             expect(mockEventsService.logEvent).toHaveBeenCalledWith({
