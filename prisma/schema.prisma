@@ -1,3 +1,4 @@
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -22,6 +23,9 @@ enum PetSpecies {
   OTHER
 }
 
+
+
+
 enum AdoptionStatus {
   REQUESTED
   PENDING
@@ -32,11 +36,13 @@ enum AdoptionStatus {
   CANCELLED
 }
 
+
 enum CustodyStatus {
   ACTIVE
   RETURNED
   CANCELLED
   VIOLATION
+  PENDING
 }
 
 enum CustodyType {
@@ -44,6 +50,8 @@ enum CustodyType {
   TEMPORARY
   SHELTER
 }
+
+
 
 enum EscrowStatus {
   CREATED
@@ -53,6 +61,7 @@ enum EscrowStatus {
   DISPUTED
 }
 
+
 enum EventEntityType {
   USER
   PET
@@ -60,6 +69,7 @@ enum EventEntityType {
   CUSTODY
   ESCROW
 }
+
 
 enum EventType {
   USER_REGISTERED
@@ -75,6 +85,11 @@ enum EventType {
   TRUST_SCORE_UPDATED
 }
 
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
 // ─── Models ──────────────────────────────────────────────
 
 model User {
@@ -85,9 +100,7 @@ model User {
   lastName  String   @map("last_name")
   role      UserRole @default(USER)
 
-  trustScore Float @default(50)
-
-
+  trustScore Float   @default(50)
 
   stellarPublicKey String? @unique @map("stellar_public_key")
   avatarUrl        String? @map("avatar_url")
@@ -95,31 +108,33 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned Pet[] @relation("PetOwner")
+  petsOwned   Pet[] @relation("PetOwner")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
 
   custodiesHeld Custody[] @relation("CustodyHolder")
 
-
   events EventLog[] @relation("ActorEvents")
+
+  documents Document[]
 
   @@map("users")
 }
 
-model Pet {
 
+
+model Pet {
   id          String      @id @default(uuid())
   name        String
   species     PetSpecies
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?    @map("image_url")
+  imageUrl    String?     @map("image_url")
 
-  currentOwnerId String? @map("current_owner_id")
-  currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
+  currentOwnerId String?  @map("current_owner_id")
+  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -132,8 +147,8 @@ model Pet {
   @@map("pets")
 }
 
-model Adoption {
 
+model Adoption {
   id     String         @id @default(uuid())
   status AdoptionStatus @default(REQUESTED)
   notes  String?
@@ -147,9 +162,10 @@ model Adoption {
   ownerId String @map("owner_id")
   owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String? @unique @map("escrow_id")
+  escrowId String?  @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
-
+  
+  documents Document[]
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -159,15 +175,16 @@ model Adoption {
   @@map("adoptions")
 }
 
+
+
 model Custody {
-  
   id       String        @id @default(uuid())
   status   CustodyStatus @default(ACTIVE)
   type     CustodyType
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
-  startDate DateTime  @map("start_date")
+  startDate DateTime @map("start_date")
   endDate   DateTime?
 
   petId String @map("pet_id")
@@ -187,20 +204,21 @@ model Custody {
   @@map("custodies")
 }
 
+
 model Escrow {
   id String @id @default(uuid())
 
-  stellarPublicKey       String @unique @map("stellar_public_key")
+  stellarPublicKey String @unique @map("stellar_public_key")
   stellarSecretEncrypted String @map("stellar_secret_encrypted")
 
-  assetCode   String  @default("XLM") @map("asset_code")
+  assetCode String @default("XLM") @map("asset_code")
   assetIssuer String? @map("asset_issuer")
 
   amount Decimal @db.Decimal(12, 2)
 
-  fundingTxHash String? @map("funding_tx_hash")
-  releaseTxHash String? @map("release_tx_hash")
-  refundTxHash  String? @map("refund_tx_hash")
+  fundingTxHash  String? @map("funding_tx_hash")
+  releaseTxHash  String? @map("release_tx_hash")
+  refundTxHash   String? @map("refund_tx_hash")
 
   requiredSignatures Int @default(2)
 
@@ -216,11 +234,23 @@ model Escrow {
   @@map("escrows")
 }
 
+
+model AppLog {
+  id        String   @id @default(uuid())
+  level     LogLevel
+  action    String
+  message   String
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+
 model EventLog {
-  id         String          @id @default(uuid())
-  entityType EventEntityType @map("entity_type")
-  entityId   String          @map("entity_id")
-  eventType  EventType       @map("event_type")
+  id          String           @id @default(uuid())
+  entityType  EventEntityType  @map("entity_type")
+  entityId    String           @map("entity_id")
+  eventType   EventType        @map("event_type")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
@@ -238,3 +268,20 @@ model EventLog {
   @@index([createdAt])
   @@map("event_logs")
 }
+
+model Document {
+  id           String   @id @default(cuid())
+  fileName     String
+  fileUrl      String
+  publicId     String
+  mimeType     String
+  size         Int
+  uploadedById String
+  adoptionId   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+}
+

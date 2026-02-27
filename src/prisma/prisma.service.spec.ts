@@ -5,6 +5,7 @@ describe('PrismaService', () => {
   let service: PrismaService;
 
   beforeEach(async () => {
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [PrismaService],
     }).compile();
@@ -15,14 +16,17 @@ describe('PrismaService', () => {
   afterEach(async () => {
     await service.$disconnect(); // Ensure proper teardown
   });
+  
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
+
   it('should be defined as PrismaService', () => {
     expect(service.constructor.name).toBe('PrismaService');
   });
+
 
   it('should have onModuleInit method', () => {
     expect(typeof service.onModuleInit).toBe('function');

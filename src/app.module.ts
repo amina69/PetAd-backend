@@ -11,7 +11,10 @@ import { EventsModule } from './events/events.module';
 import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
-import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { LoggingModule } from './logging/logging.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { LoggingInterceptor } from './logging/logging.interceptor';
 
 @Module({
   imports: [
@@ -25,9 +28,18 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     StellarModule,
     AuthModule,
     HealthModule,
-    CloudinaryModule,
+    LoggingModule,
+    
   ],
+  
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+     {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+    AppService, HttpExceptionFilter],
+  
 })
-export class AppModule {}
+
+export class AppModule { }
