@@ -25,14 +25,17 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm ci --prefer-offline || npm install --fetch-retry-mintimeout 20000 \
+    --fetch-retry-maxtimeout 120000 \
+    --fetch-retries 5
 
 COPY . .
 
 # Generate Prisma client
 RUN npx prisma generate
 
-EXPOSE 3000
+EXPOSE 3001
 
 # CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:dev"]
 CMD ["npm", "run", "start:dev"]
