@@ -118,7 +118,7 @@ export class CustodyService {
       // Create custody record
       const custodyRecord = await tx.custody.create({
         data: {
-          status: 'PENDING',
+          status: CustodyStatus.PENDING,
           type: 'TEMPORARY',
           holderId: userId,
           petId,
