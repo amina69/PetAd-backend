@@ -7,10 +7,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { TrustScoreService } from '../users/trust-score.service';
-import { PetsService } from '../pets/pets.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
-import { CustodyStatus, PetStatus } from '@prisma/client';
+import { CustodyStatus } from '@prisma/client';
 
 @Injectable()
 export class CustodyService {
@@ -19,7 +18,6 @@ export class CustodyService {
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
     private readonly trustScoreService: TrustScoreService,
-    private readonly petsService: PetsService,
   ) {}
 
   async createCustody(
@@ -243,12 +241,8 @@ export class CustodyService {
       custodyId,
     );
 
-    // Update pet status back to AVAILABLE
-    await this.petsService.changeStatusInternal(
-      custody.petId,
-      PetStatus.AVAILABLE,
-      `Custody ${custodyId} returned successfully`,
-    );
+    // Pet availability is automatically derived from custody status
+    // No need to manually update pet status
 
     return updatedCustody as CustodyResponseDto;
   }
@@ -338,12 +332,8 @@ export class CustodyService {
       custodyId,
     );
 
-    // Update pet status back to AVAILABLE
-    await this.petsService.changeStatusInternal(
-      custody.petId,
-      PetStatus.AVAILABLE,
-      `Custody ${custodyId} ended due to violation: ${reason || 'unspecified'}`,
-    );
+    // Pet availability is automatically derived from custody status
+    // No need to manually update pet status
 
     return updatedCustody as CustodyResponseDto;
   }

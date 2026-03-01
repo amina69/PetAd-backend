@@ -5,10 +5,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EventsModule } from '../events/events.module';
 import { EscrowModule } from '../escrow/escrow.module';
 import { UsersModule } from '../users/users.module';
-import { PetsModule } from '../pets/pets.module';
 
 @Module({
-  imports: [PrismaModule, EventsModule, EscrowModule, UsersModule, PetsModule],
+  imports: [PrismaModule, EventsModule, EscrowModule, UsersModule],
   controllers: [CustodyController],
   providers: [CustodyService],
   exports: [CustodyService],

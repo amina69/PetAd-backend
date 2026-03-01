@@ -4,9 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { TrustScoreService } from '../users/trust-score.service';
-import { PetsService } from '../pets/pets.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { CustodyStatus, PetStatus } from '@prisma/client';
+import { CustodyStatus } from '@prisma/client';
 
 describe('CustodyService - Return Flow', () => {
   let service: CustodyService;
@@ -14,7 +13,6 @@ describe('CustodyService - Return Flow', () => {
   let eventsService: EventsService;
   let escrowService: EscrowService;
   let trustScoreService: TrustScoreService;
-  let petsService: PetsService;
 
   const mockCustody = {
     id: 'custody-1',
@@ -64,12 +62,6 @@ describe('CustodyService - Return Flow', () => {
             penalizeViolation: jest.fn(),
           },
         },
-        {
-          provide: PetsService,
-          useValue: {
-            changeStatusInternal: jest.fn(),
-          },
-        },
       ],
     }).compile();
 
@@ -78,7 +70,6 @@ describe('CustodyService - Return Flow', () => {
     eventsService = module.get<EventsService>(EventsService);
     escrowService = module.get<EscrowService>(EscrowService);
     trustScoreService = module.get<TrustScoreService>(TrustScoreService);
-    petsService = module.get<PetsService>(PetsService);
   });
 
   describe('returnCustody', () => {
@@ -99,11 +90,6 @@ describe('CustodyService - Return Flow', () => {
       expect(result.status).toBe(CustodyStatus.RETURNED);
       expect(escrowService.releaseEscrow).toHaveBeenCalledWith('escrow-1', expect.anything());
       expect(trustScoreService.rewardSuccessfulCustody).toHaveBeenCalledWith('user-1', 'custody-1');
-      expect(petsService.changeStatusInternal).toHaveBeenCalledWith(
-        'pet-1',
-        PetStatus.AVAILABLE,
-        expect.stringContaining('returned successfully'),
-      );
       expect(eventsService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'CUSTODY_RETURNED',
@@ -150,11 +136,6 @@ describe('CustodyService - Return Flow', () => {
       expect(result.status).toBe(CustodyStatus.VIOLATION);
       expect(escrowService.refundEscrow).toHaveBeenCalledWith('escrow-1', expect.anything());
       expect(trustScoreService.penalizeViolation).toHaveBeenCalledWith('user-1', 'custody-1');
-      expect(petsService.changeStatusInternal).toHaveBeenCalledWith(
-        'pet-1',
-        PetStatus.AVAILABLE,
-        expect.stringContaining('violation'),
-      );
       expect(eventsService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'CUSTODY_RETURNED',
