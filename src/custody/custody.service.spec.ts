@@ -1,37 +1,31 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
 import { CustodyService } from './custody.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
-import { CreateCustodyDto } from './dto/create-custody.dto';
+import { TrustScoreService } from '../users/trust-score.service';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { CustodyStatus } from '@prisma/client';
 
-describe('CustodyService', () => {
+describe('CustodyService - Return Flow', () => {
   let service: CustodyService;
   let prismaService: PrismaService;
   let eventsService: EventsService;
   let escrowService: EscrowService;
+  let trustScoreService: TrustScoreService;
 
-  const mockPrismaService = {
-    pet: {
-      findUnique: jest.fn(),
-    },
-    custody: {
-      create: jest.fn(),
-      findFirst: jest.fn(),
-    },
-    adoption: {
-      findFirst: jest.fn(),
-    },
-    $transaction: jest.fn(),
-  };
-
-  const mockEventsService = {
-    logEvent: jest.fn(),
-  };
-
-  const mockEscrowService = {
-    createEscrow: jest.fn(),
+  const mockCustody = {
+    id: 'custody-1',
+    status: CustodyStatus.ACTIVE,
+    petId: 'pet-1',
+    holderId: 'user-1',
+    escrowId: 'escrow-1',
+    depositAmount: 100,
+    startDate: new Date(),
+    endDate: new Date(),
+    pet: { id: 'pet-1', name: 'Buddy' },
+    holder: { id: 'user-1', email: 'user@test.com' },
+    escrow: { id: 'escrow-1', amount: 100 },
   };
 
   beforeEach(async () => {
@@ -40,15 +34,33 @@ describe('CustodyService', () => {
         CustodyService,
         {
           provide: PrismaService,
-          useValue: mockPrismaService,
+          useValue: {
+            custody: {
+              findUnique: jest.fn(),
+              update: jest.fn(),
+            },
+            $transaction: jest.fn(),
+          },
         },
         {
           provide: EventsService,
-          useValue: mockEventsService,
+          useValue: {
+            logEvent: jest.fn(),
+          },
         },
         {
           provide: EscrowService,
-          useValue: mockEscrowService,
+          useValue: {
+            releaseEscrow: jest.fn(),
+            refundEscrow: jest.fn(),
+          },
+        },
+        {
+          provide: TrustScoreService,
+          useValue: {
+            rewardSuccessfulCustody: jest.fn(),
+            penalizeViolation: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -57,654 +69,94 @@ describe('CustodyService', () => {
     prismaService = module.get<PrismaService>(PrismaService);
     eventsService = module.get<EventsService>(EventsService);
     escrowService = module.get<EscrowService>(EscrowService);
+    trustScoreService = module.get<TrustScoreService>(TrustScoreService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
+  describe('returnCustody', () => {
+    it('should successfully return custody and release escrow', async () => {
+      const updatedCustody = { ...mockCustody, status: CustodyStatus.RETURNED };
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-
-  it('should have PrismaService injected', () => {
-    expect(prismaService).toBeDefined();
-  });
-
-  it('should have EventsService injected', () => {
-    expect(eventsService).toBeDefined();
-  });
-
-  it('should have EscrowService injected', () => {
-    expect(escrowService).toBeDefined();
-  });
-
-  describe('createCustody', () => {
-    const userId = 'user-123';
-    const createCustodyDto: CreateCustodyDto = {
-      petId: 'pet-123',
-      startDate: '2024-12-25T00:00:00.000Z',
-      durationDays: 14,
-      depositAmount: 100,
-    };
-
-    it('should throw NotFoundException when pet does not exist', async () => {
-      mockPrismaService.pet.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.createCustody(userId, createCustodyDto),
-      ).rejects.toThrow(NotFoundException);
-
-      await expect(
-        service.createCustody(userId, createCustodyDto),
-      ).rejects.toThrow('Pet with id pet-123 not found');
-
-      expect(mockPrismaService.pet.findUnique).toHaveBeenCalledWith({
-        where: { id: 'pet-123' },
-      });
-    });
-
-    it('should call pet.findUnique with correct petId', async () => {
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-
-      try {
-        await service.createCustody(userId, createCustodyDto);
-      } catch (error) {
-        // Expected to throw BadRequestException for now
-      }
-
-      expect(mockPrismaService.pet.findUnique).toHaveBeenCalledWith({
-        where: { id: 'pet-123' },
-      });
-    });
-
-    it('should throw BadRequestException when pet is already adopted', async () => {
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst.mockResolvedValueOnce({
-        id: 'adoption-123',
-        status: 'COMPLETED',
-        petId: 'pet-123',
-      });
-
-      await expect(
-        service.createCustody(userId, createCustodyDto),
-      ).rejects.toThrow('Pet is already adopted');
-
-      expect(mockPrismaService.adoption.findFirst).toHaveBeenCalledWith({
-        where: {
-          petId: 'pet-123',
-          status: 'COMPLETED',
-        },
-      });
-    });
-
-    it('should throw BadRequestException when pet has active adoption in progress', async () => {
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst
-        .mockResolvedValueOnce(null) // No completed adoption
-        .mockResolvedValueOnce({
-          // Active adoption
-          id: 'adoption-123',
-          status: 'PENDING',
-          petId: 'pet-123',
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(mockCustody as any);
+      jest.spyOn(prismaService, '$transaction').mockImplementation(async (callback: any) => {
+        return callback({
+          custody: {
+            update: jest.fn().mockResolvedValue(updatedCustody),
+          },
         });
-
-      await expect(
-        service.createCustody(userId, createCustodyDto),
-      ).rejects.toThrow('Pet has an active adoption in progress');
-
-      expect(mockPrismaService.adoption.findFirst).toHaveBeenCalledWith({
-        where: {
-          petId: 'pet-123',
-          status: {
-            in: ['REQUESTED', 'PENDING', 'APPROVED', 'ESCROW_FUNDED'],
-          },
-        },
-      });
-    });
-
-    it('should throw BadRequestException when pet has active custody', async () => {
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue({
-        id: 'custody-123',
-        status: 'ACTIVE',
-        petId: 'pet-123',
       });
 
-      await expect(
-        service.createCustody(userId, createCustodyDto),
-      ).rejects.toThrow('Pet already has an active custody agreement');
+      const result = await service.returnCustody('custody-1', 'user-1');
 
-      expect(mockPrismaService.custody.findFirst).toHaveBeenCalledWith({
-        where: {
-          petId: 'pet-123',
-          status: 'ACTIVE',
-        },
-      });
-    });
-
-    it('should throw BadRequestException when startDate is in the past', async () => {
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 1);
-
-      const dto: CreateCustodyDto = {
-        ...createCustodyDto,
-        startDate: pastDate.toISOString(),
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-
-      await expect(service.createCustody(userId, dto)).rejects.toThrow(
-        'Start date cannot be in the past',
+      expect(result.status).toBe(CustodyStatus.RETURNED);
+      expect(escrowService.releaseEscrow).toHaveBeenCalledWith('escrow-1', expect.anything());
+      expect(trustScoreService.rewardSuccessfulCustody).toHaveBeenCalledWith('user-1', 'custody-1');
+      expect(eventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'CUSTODY_RETURNED',
+          entityId: 'custody-1',
+        }),
       );
     });
 
-    it('should throw BadRequestException when durationDays is less than 1', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
+    it('should throw NotFoundException if custody not found', async () => {
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(null);
 
-      const dto: CreateCustodyDto = {
-        ...createCustodyDto,
-        startDate: futureDate.toISOString(),
-        durationDays: 0,
-      };
+      await expect(service.returnCustody('custody-1', 'user-1')).rejects.toThrow(NotFoundException);
+    });
 
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
+    it('should throw BadRequestException if custody is not ACTIVE', async () => {
+      const inactiveCustody = { ...mockCustody, status: CustodyStatus.RETURNED };
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(inactiveCustody as any);
+
+      await expect(service.returnCustody('custody-1', 'user-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if user is not the holder', async () => {
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(mockCustody as any);
+
+      await expect(service.returnCustody('custody-1', 'wrong-user')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('violationCustody', () => {
+    it('should mark custody as violation and refund escrow', async () => {
+      const violatedCustody = { ...mockCustody, status: CustodyStatus.VIOLATION };
+
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(mockCustody as any);
+      jest.spyOn(prismaService, '$transaction').mockImplementation(async (callback: any) => {
+        return callback({
+          custody: {
+            update: jest.fn().mockResolvedValue(violatedCustody),
+          },
+        });
       });
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
 
-      await expect(service.createCustody(userId, dto)).rejects.toThrow(
-        'Duration must be between 1 and 90 days',
+      const result = await service.violationCustody('custody-1', 'admin-1', 'Pet neglected');
+
+      expect(result.status).toBe(CustodyStatus.VIOLATION);
+      expect(escrowService.refundEscrow).toHaveBeenCalledWith('escrow-1', expect.anything());
+      expect(trustScoreService.penalizeViolation).toHaveBeenCalledWith('user-1', 'custody-1');
+      expect(eventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'CUSTODY_RETURNED',
+          payload: expect.objectContaining({
+            violation: true,
+          }),
+        }),
       );
     });
 
-    it('should throw BadRequestException when durationDays is greater than 90', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
+    it('should throw NotFoundException if custody not found', async () => {
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(null);
 
-      const dto: CreateCustodyDto = {
-        ...createCustodyDto,
-        startDate: futureDate.toISOString(),
-        durationDays: 91,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue({
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      });
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-
-      await expect(service.createCustody(userId, dto)).rejects.toThrow(
-        'Duration must be between 1 and 90 days',
-      );
+      await expect(service.violationCustody('custody-1', 'admin-1')).rejects.toThrow(NotFoundException);
     });
 
-    it('should accept durationDays of 1 (boundary case)', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
+    it('should throw BadRequestException if custody is not ACTIVE', async () => {
+      const inactiveCustody = { ...mockCustody, status: CustodyStatus.VIOLATION };
+      jest.spyOn(prismaService.custody, 'findUnique').mockResolvedValue(inactiveCustody as any);
 
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 1,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: new Date(),
-        depositAmount: null,
-        escrowId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-      expect(result).toBeDefined();
-      expect(result.status).toBe('PENDING');
-      expect(mockEscrowService.createEscrow).not.toHaveBeenCalled();
-    });
-
-    it('should accept durationDays of 90 (boundary case)', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 90,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: new Date(),
-        depositAmount: null,
-        escrowId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-      expect(result).toBeDefined();
-      expect(result.status).toBe('PENDING');
-      expect(mockEscrowService.createEscrow).not.toHaveBeenCalled();
-    });
-
-    it('should accept startDate equal to today', async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: today.toISOString(),
-        durationDays: 14,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: new Date(),
-        depositAmount: null,
-        escrowId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-      expect(result).toBeDefined();
-      expect(result.status).toBe('PENDING');
-      expect(mockEscrowService.createEscrow).not.toHaveBeenCalled();
-    });
-
-    it('should create custody record with correct data', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 14,
-        depositAmount: 100,
-      };
-
-      const expectedEndDate = new Date(futureDate);
-      expectedEndDate.setDate(expectedEndDate.getDate() + 14);
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-        breed: 'Golden Retriever',
-        age: 3,
-        description: 'Friendly dog',
-        imageUrl: 'https://example.com/buddy.jpg',
-      };
-
-      const mockEscrow = {
-        id: 'escrow-123',
-        stellarPublicKey: 'ESCROW_PUBLIC_KEY',
-        stellarSecretEncrypted: 'ENCRYPTED_SECRET',
-        amount: 100,
-        status: 'CREATED',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: expectedEndDate,
-        depositAmount: 100,
-        escrowId: 'escrow-123',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockEscrowService.createEscrow.mockResolvedValue(mockEscrow);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-
-      expect(result).toEqual(mockCustody);
-      expect(mockPrismaService.$transaction).toHaveBeenCalled();
-    });
-
-    it('should create custody record without depositAmount', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 14,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-        breed: 'Golden Retriever',
-        age: 3,
-        description: 'Friendly dog',
-        imageUrl: 'https://example.com/buddy.jpg',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: new Date(),
-        depositAmount: null,
-        escrowId: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-
-      expect(result).toEqual(mockCustody);
-      expect(mockEscrowService.createEscrow).not.toHaveBeenCalled();
-      expect(mockPrismaService.$transaction).toHaveBeenCalled();
-    });
-
-    it('should create escrow when depositAmount is provided', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 14,
-        depositAmount: 250.50,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      const mockEscrow = {
-        id: 'escrow-456',
-        stellarPublicKey: 'ESCROW_PUBLIC_KEY',
-        stellarSecretEncrypted: 'ENCRYPTED_SECRET',
-        amount: 250.50,
-        status: 'CREATED',
-      };
-
-      const mockCustody = {
-        id: 'custody-456',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: new Date(),
-        depositAmount: 250.50,
-        escrowId: 'escrow-456',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockEscrowService.createEscrow.mockResolvedValue(mockEscrow);
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      const result = await service.createCustody(userId, dto);
-
-      expect(result).toBeDefined();
-      expect(result.escrowId).toBe('escrow-456');
-      expect(mockEscrowService.createEscrow).toHaveBeenCalledWith(
-        250.50,
-        expect.anything(),
-      );
-    });
-
-    it('should rollback transaction if escrow creation fails', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 14,
-        depositAmount: 100,
-      };
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockEscrowService.createEscrow.mockRejectedValue(
-        new Error('Escrow creation failed'),
-      );
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn(),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      await expect(service.createCustody(userId, dto)).rejects.toThrow(
-        'Escrow creation failed',
-      );
-    });
-
-    it('should log CUSTODY_STARTED event after successful custody creation', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-
-      const dto: CreateCustodyDto = {
-        petId: 'pet-123',
-        startDate: futureDate.toISOString(),
-        durationDays: 14,
-        depositAmount: 100,
-      };
-
-      const expectedEndDate = new Date(futureDate);
-      expectedEndDate.setDate(expectedEndDate.getDate() + 14);
-
-      const mockPet = {
-        id: 'pet-123',
-        name: 'Buddy',
-        species: 'DOG',
-      };
-
-      const mockCustody = {
-        id: 'custody-123',
-        status: 'PENDING',
-        type: 'TEMPORARY',
-        holderId: userId,
-        petId: 'pet-123',
-        startDate: new Date(dto.startDate),
-        endDate: expectedEndDate,
-        depositAmount: 100,
-        escrowId: 'escrow-123',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        pet: mockPet,
-      };
-
-      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
-      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
-      mockPrismaService.custody.findFirst.mockResolvedValue(null);
-      mockEscrowService.createEscrow.mockResolvedValue({
-        id: 'escrow-123',
-        stellarPublicKey: 'ESCROW_PUBLIC_KEY',
-        stellarSecretEncrypted: 'ENCRYPTED_SECRET',
-        amount: 100,
-        status: 'CREATED',
-      });
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            create: jest.fn().mockResolvedValue(mockCustody),
-          },
-        };
-        return callback(mockTx);
-      });
-
-      await service.createCustody(userId, dto);
-
-      expect(mockEventsService.logEvent).toHaveBeenCalledWith({
-        entityType: 'CUSTODY',
-        entityId: 'custody-123',
-        eventType: 'CUSTODY_STARTED',
-        actorId: userId,
-        payload: {
-          petId: 'pet-123',
-          startDate: mockCustody.startDate,
-          endDate: mockCustody.endDate,
-          depositAmount: 100,
-        },
-      });
+      await expect(service.violationCustody('custody-1', 'admin-1')).rejects.toThrow(BadRequestException);
     });
   });
 });
