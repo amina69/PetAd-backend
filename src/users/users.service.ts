@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   async getProfile(id: string) {
     const user = await this.prisma.user.findUnique({
@@ -58,5 +62,40 @@ export class UsersService {
         avatarUrl: true,
       },
     });
+  }
+
+  async updateTrustScore(userId: string, delta: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, trustScore: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const newScore = Math.max(0, Math.min(100, user.trustScore + delta));
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { trustScore: newScore },
+      select: {
+        id: true,
+        trustScore: true,
+      },
+    });
+
+    await this.eventsService.logEvent({
+      entityType: 'USER',
+      entityId: userId,
+      eventType: 'TRUST_SCORE_UPDATED',
+      payload: {
+        previousScore: user.trustScore,
+        newScore,
+        delta,
+      },
+    });
+
+    return updatedUser;
   }
 }
