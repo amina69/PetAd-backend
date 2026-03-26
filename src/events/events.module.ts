@@ -1,11 +1,15 @@
 import { Global, Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { EventsService } from './events.service';
 import { PrismaModule } from '../prisma/prisma.module';
 
-@Global() // Makes EventsService available application-wide without needing to import EventsModule everywhere
+@Global()
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    PrismaModule,
+    BullModule.processQueue('events', { concurrency: 10 }),
+  ],
   providers: [EventsService],
-  exports: [EventsService], // Export it so other modules can use it
+  exports: [EventsService],
 })
 export class EventsModule {}
