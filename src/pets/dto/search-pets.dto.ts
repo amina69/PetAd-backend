@@ -1,87 +1,68 @@
 import { IsOptional, IsInt, Min, Max, IsEnum, IsString } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PetSpecies, PetGender, PetSize, PetStatus } from '../../common/enums';
+import { PetSpecies, PetGender, PetSize } from '../../common/enums';
 
-/**
- * Search and Pagination DTO for Pets
- * Handles pagination parameters and optional filters
- */
 export class SearchPetsDto {
-  // ========== Pagination Parameters ==========
-
-  @ApiPropertyOptional({
-    minimum: 1,
-    default: 1,
-    description: 'Page number (starts from 1)',
-    example: 1,
-  })
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'Page must be an integer' })
-  @Min(1, { message: 'Page must be at least 1' })
+  @IsInt()
+  @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({
-    minimum: 1,
-    maximum: 100,
-    default: 20,
-    description: 'Number of items per page (max 100)',
-    example: 20,
-  })
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'Limit must be an integer' })
-  @Min(1, { message: 'Limit must be at least 1' })
-  @Max(100, { message: 'Limit cannot exceed 100' })
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number = 20;
 
-  // ========== Filter Parameters ==========
-
-  @ApiPropertyOptional({
-    enum: PetSpecies,
-    description: 'Filter by species',
-    example: PetSpecies.DOG,
-  })
+  @ApiPropertyOptional({ enum: PetSpecies })
   @IsOptional()
-  @IsEnum(PetSpecies, { message: 'Invalid species value' })
+  @IsEnum(PetSpecies)
   species?: PetSpecies;
 
-  @ApiPropertyOptional({
-    enum: PetGender,
-    description: 'Filter by gender',
-    example: PetGender.MALE,
-  })
+  @ApiPropertyOptional({ enum: PetGender })
   @IsOptional()
-  @IsEnum(PetGender, { message: 'Invalid gender value' })
+  @IsEnum(PetGender)
   gender?: PetGender;
 
-  @ApiPropertyOptional({
-    enum: PetSize,
-    description: 'Filter by size',
-    example: PetSize.MEDIUM,
-  })
+  @ApiPropertyOptional({ enum: PetSize })
   @IsOptional()
-  @IsEnum(PetSize, { message: 'Invalid size value' })
+  @IsEnum(PetSize)
   size?: PetSize;
 
-  @ApiPropertyOptional({
-    enum: PetStatus,
-    description: 'Filter by status (defaults to AVAILABLE for public)',
-    example: PetStatus.AVAILABLE,
-  })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsEnum(PetStatus, { message: 'Invalid status value' })
-  status?: PetStatus;
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  breed?: string;
 
-  @ApiPropertyOptional({
-    description: 'Search by name or breed (case-insensitive)',
-    example: 'Golden Retriever',
-  })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsString({ message: 'Search must be a string' })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : (value as string),
-  )
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  location?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minAge?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxAge?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   search?: string;
 }

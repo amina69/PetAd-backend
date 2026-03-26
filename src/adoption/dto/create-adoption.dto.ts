@@ -1,4 +1,4 @@
-import { IsUUID, IsOptional, IsString } from 'class-validator';
+import { IsString, IsUUID, IsOptional, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAdoptionDto {
@@ -8,6 +8,7 @@ export class CreateAdoptionDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   @ApiProperty({ example: 'I would love to adopt this pet', required: false })
   notes?: string;
 }

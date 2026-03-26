@@ -1,8 +1,5 @@
 import { IsString, IsInt, IsOptional, IsArray, IsEnum } from 'class-validator';
-import {
-  ApiProperty,
-  ApiPropertyOptional,
-} from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PetGender, PetSize, PetSpecies } from '../../common/enums';
 
 export class CreatePetDto {

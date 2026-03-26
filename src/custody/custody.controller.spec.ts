@@ -1,42 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CustodyController } from './custody.controller';
 import { CustodyService } from './custody.service';
-import { CustodyStatus } from '@prisma/client';
+import type { CreateCustodyDto } from './dto/create-custody.dto';
+import type { CustodyResponseDto } from './dto/custody-response.dto';
+import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 
 describe('CustodyController', () => {
   let controller: CustodyController;
   let service: CustodyService;
 
-  const mockCustody = {
-    id: 'custody-1',
-    status: CustodyStatus.ACTIVE,
-    type: 'TEMPORARY',
-    depositAmount: 100,
-    startDate: new Date(),
-    endDate: null,
-    petId: 'pet-1',
-    holderId: 'user-1',
-    escrowId: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    holder: {
-      id: 'user-1',
-      email: 'holder@example.com',
-      firstName: 'John',
-      lastName: 'Doe',
-      trustScore: 50,
-    },
-    pet: {
-      id: 'pet-1',
-      name: 'Buddy',
-      species: 'DOG',
-    },
-  };
-
   const mockCustodyService = {
-    findOne: jest.fn(),
-    updateStatus: jest.fn(),
-    getAllowedTransitions: jest.fn(),
+    createCustody: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -52,7 +26,9 @@ describe('CustodyController', () => {
 
     controller = module.get<CustodyController>(CustodyController);
     service = module.get<CustodyService>(CustodyService);
+  });
 
+  afterEach(() => {
     jest.clearAllMocks();
   });
 
@@ -60,80 +36,97 @@ describe('CustodyController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('findOne', () => {
-    it('should return custody by ID', async () => {
-      mockCustodyService.findOne.mockResolvedValue(mockCustody);
-
-      const result = await controller.findOne('custody-1');
-
-      expect(result).toEqual(mockCustody);
-      expect(service.findOne).toHaveBeenCalledWith('custody-1');
-    });
-  });
-
-  describe('updateStatus', () => {
-    it('should update custody status', async () => {
-      const updatedCustody = {
-        ...mockCustody,
-        status: CustodyStatus.RETURNED,
+  describe('createCustody', () => {
+    it('should create a custody agreement successfully', async () => {
+      const user: CurrentUserPayload = {
+        userId: 'user-123',
+        email: 'test@example.com',
+        role: 'USER',
       };
-      mockCustodyService.updateStatus.mockResolvedValue(updatedCustody);
 
-      const req = { user: { userId: 'actor-1' } };
-      const result = await controller.updateStatus(
-        'custody-1',
-        { status: CustodyStatus.RETURNED },
-        req,
-      );
+      const createDto: CreateCustodyDto = {
+        petId: 'pet-123',
+        startDate: '2024-12-25T00:00:00.000Z',
+        durationDays: 14,
+        depositAmount: 100.0,
+      };
 
-      expect(result).toEqual(updatedCustody);
-      expect(service.updateStatus).toHaveBeenCalledWith(
-        'custody-1',
-        CustodyStatus.RETURNED,
-        'actor-1',
+      const expectedResponse: CustodyResponseDto = {
+        id: 'custody-123',
+        status: 'PENDING',
+        type: 'TEMPORARY',
+        depositAmount: null,
+        startDate: new Date('2024-12-25T00:00:00.000Z'),
+        endDate: new Date('2025-01-08T00:00:00.000Z'),
+        petId: 'pet-123',
+        holderId: 'user-123',
+        escrowId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        pet: {
+          id: 'pet-123',
+          name: 'Buddy',
+          species: 'DOG',
+          breed: 'Golden Retriever',
+          age: 3,
+          description: 'Friendly dog',
+          imageUrl: null,
+        },
+      };
+
+      mockCustodyService.createCustody.mockResolvedValue(expectedResponse);
+
+      const result = await controller.createCustody(user, createDto);
+
+      expect(result).toEqual(expectedResponse);
+      expect(service.createCustody).toHaveBeenCalledWith(
+        user.userId,
+        createDto,
       );
+      expect(service.createCustody).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle request without user', async () => {
-      const updatedCustody = {
-        ...mockCustody,
-        status: CustodyStatus.CANCELLED,
+    it('should pass userId from JWT to service', async () => {
+      const user: CurrentUserPayload = {
+        userId: 'user-456',
+        email: 'another@example.com',
+        role: 'USER',
       };
-      mockCustodyService.updateStatus.mockResolvedValue(updatedCustody);
 
-      const req = {};
-      const result = await controller.updateStatus(
-        'custody-1',
-        { status: CustodyStatus.CANCELLED },
-        req,
-      );
-
-      expect(result).toEqual(updatedCustody);
-      expect(service.updateStatus).toHaveBeenCalledWith(
-        'custody-1',
-        CustodyStatus.CANCELLED,
-        undefined,
-      );
-    });
-  });
-
-  describe('getAllowedTransitions', () => {
-    it('should return allowed transitions', async () => {
-      const transitions = {
-        currentStatus: CustodyStatus.ACTIVE,
-        allowedTransitions: [
-          CustodyStatus.RETURNED,
-          CustodyStatus.CANCELLED,
-          CustodyStatus.VIOLATION,
-        ],
-        isTerminal: false,
+      const createDto: CreateCustodyDto = {
+        petId: 'pet-789',
+        startDate: '2024-12-30T00:00:00.000Z',
+        durationDays: 7,
       };
-      mockCustodyService.getAllowedTransitions.mockResolvedValue(transitions);
 
-      const result = await controller.getAllowedTransitions('custody-1');
+      const mockResponse: CustodyResponseDto = {
+        id: 'custody-456',
+        status: 'PENDING',
+        type: 'TEMPORARY',
+        depositAmount: null,
+        startDate: new Date('2024-12-30T00:00:00.000Z'),
+        endDate: new Date('2025-01-06T00:00:00.000Z'),
+        petId: 'pet-789',
+        holderId: 'user-456',
+        escrowId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        pet: {
+          id: 'pet-789',
+          name: 'Max',
+          species: 'CAT',
+          breed: null,
+          age: 2,
+          description: null,
+          imageUrl: null,
+        },
+      };
 
-      expect(result).toEqual(transitions);
-      expect(service.getAllowedTransitions).toHaveBeenCalledWith('custody-1');
+      mockCustodyService.createCustody.mockResolvedValue(mockResponse);
+
+      await controller.createCustody(user, createDto);
+
+      expect(service.createCustody).toHaveBeenCalledWith('user-456', createDto);
     });
   });
 });

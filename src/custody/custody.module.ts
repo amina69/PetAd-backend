@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
-import { CustodyController } from './custody.controller';
 import { CustodyService } from './custody.service';
+import { CustodyController } from './custody.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EventsModule } from '../events/events.module';
+import { EscrowModule } from '../escrow/escrow.module';
 
 @Module({
-  imports: [PrismaModule, EventsModule],
+  imports: [PrismaModule, EventsModule, EscrowModule],
   controllers: [CustodyController],
   providers: [CustodyService],
   exports: [CustodyService],
