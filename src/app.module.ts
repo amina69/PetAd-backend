@@ -15,6 +15,7 @@ import { LoggingModule } from './logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggingInterceptor } from './logging/logging.interceptor';
+import { JobsModule } from './jobs/jobs.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { LoggingInterceptor } from './logging/logging.interceptor';
     AuthModule,
     HealthModule,
     LoggingModule,
+    JobsModule,
     
   ],
   
