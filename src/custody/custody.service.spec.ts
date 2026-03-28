@@ -4,6 +4,8 @@ import { CustodyService } from './custody.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
+import { UsersService } from '../users/users.service';
+import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 
 describe('CustodyService', () => {
@@ -34,6 +36,14 @@ describe('CustodyService', () => {
     createEscrow: jest.fn(),
   };
 
+  const mockUsersService = {
+    updateTrustScore: jest.fn(),
+  };
+
+  const mockNotificationQueueService = {
+    addJob: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +59,14 @@ describe('CustodyService', () => {
         {
           provide: EscrowService,
           useValue: mockEscrowService,
+        },
+        {
+          provide: UsersService,
+          useValue: mockUsersService,
+        },
+        {
+          provide: NotificationQueueService,
+          useValue: mockNotificationQueueService,
         },
       ],
     }).compile();

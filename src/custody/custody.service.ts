@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
+import { UsersService } from '../users/users.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 import { CustodyStatus } from '@prisma/client';
@@ -18,6 +19,7 @@ export class CustodyService {
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
+    private readonly usersService: UsersService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -179,5 +181,93 @@ export class CustodyService {
     }
 
     return custody as CustodyResponseDto;
+  }
+
+  async returnCustody(custodyId: string): Promise<CustodyResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const custody = await tx.custody.findUnique({
+        where: { id: custodyId },
+        include: { holder: true, pet: true },
+      });
+
+      if (!custody) {
+        throw new NotFoundException(`Custody with id ${custodyId} not found`);
+      }
+
+      if (custody.status !== CustodyStatus.ACTIVE) {
+        throw new BadRequestException(
+          `Custody must be ACTIVE to return (current status: ${custody.status})`,
+        );
+      }
+
+      const updatedCustody = await tx.custody.update({
+        where: { id: custodyId },
+        data: { status: CustodyStatus.RETURNED },
+        include: { holder: true, pet: true },
+      });
+
+      await this.eventsService.logEvent({
+        entityType: 'CUSTODY',
+        entityId: custodyId,
+        eventType: 'CUSTODY_RETURNED',
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          holderId: custody.holderId,
+        },
+      });
+
+      if (custody.escrowId) {
+        await this.escrowService.releaseEscrow(custody.escrowId);
+      }
+
+      await this.usersService.updateTrustScore(custody.holderId, 5);
+
+      return updatedCustody as CustodyResponseDto;
+    });
+  }
+
+  async violationCustody(custodyId: string): Promise<CustodyResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const custody = await tx.custody.findUnique({
+        where: { id: custodyId },
+        include: { holder: true, pet: true },
+      });
+
+      if (!custody) {
+        throw new NotFoundException(`Custody with id ${custodyId} not found`);
+      }
+
+      if (custody.status !== CustodyStatus.ACTIVE) {
+        throw new BadRequestException(
+          `Custody must be ACTIVE to mark as violation (current status: ${custody.status})`,
+        );
+      }
+
+      const updatedCustody = await tx.custody.update({
+        where: { id: custodyId },
+        data: { status: CustodyStatus.VIOLATION },
+        include: { holder: true, pet: true },
+      });
+
+      await this.eventsService.logEvent({
+        entityType: 'CUSTODY',
+        entityId: custodyId,
+        eventType: 'CUSTODY_VIOLATION',
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          holderId: custody.holderId,
+        },
+      });
+
+      if (custody.escrowId) {
+        await this.escrowService.refundEscrow(custody.escrowId);
+      }
+
+      await this.usersService.updateTrustScore(custody.holderId, -15);
+
+      return updatedCustody as CustodyResponseDto;
+    });
   }
 }
