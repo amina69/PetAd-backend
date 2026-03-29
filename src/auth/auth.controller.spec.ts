@@ -67,16 +67,19 @@ describe('AuthController (e2e)', () => {
         firstName: 'Test',
         lastName: 'User',
       });
+
     const body = res.body as {
       access_token: string;
       user: { email: string; role: string };
     };
+
     expect(res.status).toBe(201);
     expect(body).toHaveProperty('access_token');
     expect(body.user).toMatchObject({
       email: uniqueEmail,
       role: 'USER',
     });
+
   }, 10000);
 
   it('should reject duplicate email registration', async () => {
@@ -86,6 +89,7 @@ describe('AuthController (e2e)', () => {
       firstName: 'Dupe',
       lastName: 'User',
     });
+
     const res: Response = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
@@ -94,6 +98,7 @@ describe('AuthController (e2e)', () => {
         firstName: 'Dupe',
         lastName: 'User',
       });
+
     const body = res.body as { message: string };
     expect(res.status).toBe(409);
     expect(body.message).toMatch(/already registered/i);
@@ -108,6 +113,7 @@ describe('AuthController (e2e)', () => {
         firstName: 'Bad',
         lastName: 'Email',
       });
+
     const body = res.body as { message: string };
     expect(res.status).toBe(400);
     expect(body.message).toContain('email must be an email');
@@ -122,11 +128,13 @@ describe('AuthController (e2e)', () => {
         firstName: 'Weak',
         lastName: 'Pass',
       });
+
     const body = res.body as { message: string };
     expect(res.status).toBe(400);
     expect(body.message).toContain(
       'password must be longer than or equal to 8 characters',
     );
+
   });
 
   it('should login successfully and return JWT', async () => {
@@ -138,6 +146,7 @@ describe('AuthController (e2e)', () => {
       firstName: 'Login',
       lastName: 'User',
     });
+
     // Login
     const res: Response = await request(app.getHttpServer())
       .post('/auth/login')
@@ -145,10 +154,12 @@ describe('AuthController (e2e)', () => {
         email: uniqueEmail,
         password: 'StrongPass123',
       });
+
     const body = res.body as {
       access_token: string;
       user: { email: string; role: string };
     };
+
     expect(res.status).toBe(201);
     expect(body).toHaveProperty('access_token');
     expect(body.user).toMatchObject({ email: uniqueEmail, role: 'USER' });
@@ -161,6 +172,7 @@ describe('AuthController (e2e)', () => {
         email: 'nonexistent@example.com',
         password: 'wrongpassword',
       });
+
     const body = res.body as { message: string };
     expect(res.status).toBe(401);
     expect(body.message).toMatch(/invalid credentials/i);
@@ -174,6 +186,7 @@ describe('AuthController (e2e)', () => {
         password: 'StrongPass123',
         // missing firstName and lastName
       });
+
     const body = res.body as { message: string[] };
     expect(res.status).toBe(400);
     expect(body.message).toContain('firstName should not be empty');
@@ -191,6 +204,7 @@ describe('AuthController (e2e)', () => {
         lastName: 'Fields',
         extraField: 'shouldBeIgnored',
       });
+
     const body = res.body as { message: string[] };
     expect(res.status).toBe(400);
     expect(
@@ -217,6 +231,7 @@ describe('AuthController (e2e)', () => {
         password: 'StrongPass123',
         extraField: 'shouldBeIgnored',
       });
+
     const body = res.body as { message: string[] };
     expect(res.status).toBe(400);
     expect(
@@ -225,4 +240,5 @@ describe('AuthController (e2e)', () => {
       ),
     ).toBe(true);
   });
+  
 });
