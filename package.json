@@ -26,6 +26,7 @@
     "seed": "npx prisma db seed"
   },
   "dependencies": {
+    "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
@@ -36,6 +37,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/terminus": "^11.1.1",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.1",
     "bcryptjs": "^3.0.3",
@@ -45,7 +47,7 @@
     "class-validator": "^0.14.3",
     "cloudinary": "^1.41.3",
     "dotenv": "^16.6.1",
-    "ioredis": "^5.9.3",
+    "ioredis": "^5.10.1",
     "nodemailer": "^8.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

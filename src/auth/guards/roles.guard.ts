@@ -5,6 +5,7 @@ import { Role } from '../enums/role.enum';
 import { Request } from 'express';
 
 interface AuthenticatedRequest extends Request {
+  
   user?: {
     role?: string; // JWT carries string
   };

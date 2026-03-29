@@ -12,6 +12,7 @@ describe('RolesGuard', () => {
     guard = new RolesGuard(reflector);
   });
 
+
   it('should allow access when no roles required', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
 
@@ -19,6 +20,7 @@ describe('RolesGuard', () => {
 
     expect(guard.canActivate(context)).toBe(true);
   });
+
 
   it('should allow access when user has required role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.ADMIN]);
@@ -28,6 +30,7 @@ describe('RolesGuard', () => {
     expect(guard.canActivate(context)).toBe(true);
   });
 
+
   it('should deny access when user lacks required role', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.ADMIN]);
 
@@ -35,6 +38,7 @@ describe('RolesGuard', () => {
 
     expect(guard.canActivate(context)).toBe(false);
   });
+
 
   it('should allow access when user has one of multiple required roles', () => {
     jest
@@ -45,6 +49,7 @@ describe('RolesGuard', () => {
 
     expect(guard.canActivate(context)).toBe(true);
   });
+
 });
 
 function createMockContext(user: any): ExecutionContext {
@@ -52,6 +57,7 @@ function createMockContext(user: any): ExecutionContext {
     switchToHttp: () => ({
       getRequest: () => ({ user }),
     }),
+    
     getHandler: () => ({}),
     getClass: () => ({}),
   } as any;

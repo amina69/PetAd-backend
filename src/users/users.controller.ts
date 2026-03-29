@@ -22,6 +22,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
+
 
 interface AuthRequest extends Request {
   user: {
@@ -46,6 +48,7 @@ export class UsersController {
     }
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Get(':id')
   @ApiOperation({ summary: 'Get user profile' })
   async getProfile(@Param('id') id: string, @Req() req: AuthRequest) {
@@ -53,6 +56,7 @@ export class UsersController {
     return this.usersService.getProfile(id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Patch(':id')
   async updateProfile(
     @Param('id') id: string,
@@ -63,6 +67,7 @@ export class UsersController {
     return this.usersService.updateProfile(id, dto);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post(':id/avatar')
   @UseInterceptors(
     FileInterceptor('avatar', {
@@ -91,6 +96,8 @@ export class UsersController {
     return this.usersService.updateAvatar(id, upload.secure_url);
   }
 
+
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   async deleteProfile(@Param('id') id: string, @Req() req: AuthRequest) {
@@ -98,3 +105,4 @@ export class UsersController {
     return this.usersService.deleteProfile(id);
   }
 }
+
