@@ -7,9 +7,12 @@ import { QueueController } from './queue.controller';
   imports: [
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: configService.get('redis'),
-      }),
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get<string>('redis') || 'redis://localhost:6379';
+        return {
+          connection: { url: redisUrl },
+        };
+      },
       inject: [ConfigService],
     }),
     BullModule.registerQueue({
@@ -22,3 +25,5 @@ import { QueueController } from './queue.controller';
   controllers: [QueueController],
 })
 export class QueueModule {}
+
+

@@ -1,6 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Process, Processor } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventType, EventEntityType, Prisma } from '@prisma/client';
 
@@ -15,7 +13,6 @@ export interface CreateEventLogDto {
   metadata?: Prisma.InputJsonValue;
 }
 
-@Processor('events')
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
@@ -51,14 +48,5 @@ export class EventsService {
       );
       throw error;
     }
-  }
-
-  @Process()
-  async handleEvent(job: Job) {
-    this.logger.log(`Processing event job ${job.id}`);
-    // Assume job.data is CreateEventLogDto
-    const dto = job.data as CreateEventLogDto;
-    await this.logEvent(dto);
-    return { success: true };
   }
 }
