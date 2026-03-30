@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
@@ -9,6 +10,7 @@ import { EscrowService } from '../escrow/escrow.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 import { CustodyStatus } from '@prisma/client';
+import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 
 @Injectable()
 export class CustodyService {
@@ -16,6 +18,8 @@ export class CustodyService {
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
+    @Optional()
+    private readonly notificationQueueService?: NotificationQueueService,
   ) {}
 
   async createCustody(
@@ -144,6 +148,35 @@ export class CustodyService {
         depositAmount: custody.depositAmount,
       },
     });
+
+    // Best-effort: enqueue a notification email without blocking custody creation.
+    if (this.notificationQueueService) {
+      try {
+        const holder = await this.prisma.user.findUnique({
+          where: { id: custody.holderId },
+          select: { email: true },
+        });
+
+        if (holder?.email) {
+          await this.notificationQueueService.enqueueSendTransactionalEmail({
+            dto: {
+              to: holder.email,
+              subject: 'PetAd: Custody Agreement Started',
+              text: `Hello! Your custody agreement has started for pet ${custody.petId}.`,
+            },
+            metadata: { custodyId: custody.id, petId: custody.petId },
+          });
+        }
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : String(error);
+        // Intentionally using Nest logger semantics; don't fail request due to async email.
+        // eslint-disable-next-line no-console
+        console.error(
+          `Failed to enqueue custody notification email | custodyId=${custody.id} | reason=${reason}`,
+        );
+      }
+    }
 
     return custody as CustodyResponseDto;
   }

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,6 +19,7 @@ import {
 
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
+import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
   [AdoptionStatus.APPROVED]: EventType.ADOPTION_APPROVED,
@@ -31,6 +33,8 @@ export class AdoptionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    @Optional()
+    private readonly notificationQueueService?: NotificationQueueService,
   ) {}
 
   async approve(adoptionId: string) {
@@ -139,6 +143,35 @@ export class AdoptionService {
           newStatus: dto.status,
         } satisfies Prisma.InputJsonValue,
       });
+
+      // Best-effort: enqueue a notification email without blocking status updates.
+      if (this.notificationQueueService) {
+        try {
+          const adopter = await this.prisma.user.findUnique({
+            where: { id: updated.adopterId },
+            select: { email: true },
+          });
+
+          if (adopter?.email) {
+            await this.notificationQueueService.enqueueSendTransactionalEmail(
+              {
+                dto: {
+                  to: adopter.email,
+                  subject: `PetAd: Adoption ${dto.status}`,
+                  text: `Hello! Your adoption has been updated to ${dto.status}.`,
+                },
+                metadata: { adoptionId, newStatus: dto.status },
+              },
+            );
+          }
+        } catch (error) {
+          const reason =
+            error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `Failed to enqueue adoption notification email | adoptionId=${adoptionId} | reason=${reason}`,
+          );
+        }
+      }
     }
 
     return updated;

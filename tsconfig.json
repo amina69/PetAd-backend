@@ -22,7 +22,7 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "typeRoots": ["./node_modules/@types", "./src/types"],
-    "types": ["multer"]
+    "types": ["multer","jest", "node"],
 
   },
   "watchOptions": {
