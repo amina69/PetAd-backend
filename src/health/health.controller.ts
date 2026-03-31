@@ -6,7 +6,9 @@ import {
 } from '@nestjs/terminus';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaClient } from '@prisma/client';
+import { SkipThrottle } from '@nestjs/throttler';
 
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(
@@ -39,3 +41,4 @@ export class HealthController {
   //   ]);
   // }
 }
+
