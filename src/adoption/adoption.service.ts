@@ -1,23 +1,26 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
+  BadRequestException,
   ConflictException,
+  Logger,
   Optional,
 } from '@nestjs/common';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+
 import {
   EventType,
   EventEntityType,
   AdoptionStatus,
   Prisma,
 } from '@prisma/client';
+
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 
-/** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
   [AdoptionStatus.APPROVED]: EventType.ADOPTION_APPROVED,
   [AdoptionStatus.COMPLETED]: EventType.ADOPTION_COMPLETED,
@@ -34,11 +37,43 @@ export class AdoptionService {
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
 
-  /**
-   * Creates an adoption request and fires an ADOPTION_REQUESTED event.
-   * Throws NotFoundException if the pet does not exist.
-   * Throws ConflictException if the pet has no owner or already has an active adoption.
-   */
+  async approve(adoptionId: string) {
+    const adoption = await this.prisma.adoption.findUnique({
+      where: { id: adoptionId },
+    });
+
+    if (!adoption) throw new NotFoundException('Adoption not found');
+
+    if (adoption.status !== AdoptionStatus.PENDING) {
+      throw new BadRequestException('Adoption is not pending');
+    }
+
+    return this.prisma.adoption.update({
+      where: { id: adoptionId },
+      data: { status: AdoptionStatus.APPROVED },
+    });
+  }
+
+  async reject(adoptionId: string, adminUserId: string, reason?: string) {
+    const adoption = await this.prisma.adoption.findUnique({
+      where: { id: adoptionId },
+    });
+
+    if (!adoption) throw new NotFoundException('Adoption not found');
+
+    if (adoption.status !== AdoptionStatus.PENDING) {
+      throw new BadRequestException('Adoption is not pending');
+    }
+
+    return this.prisma.adoption.update({
+      where: { id: adoptionId },
+      data: {
+        status: AdoptionStatus.REJECTED,
+        notes: reason ?? null,
+      },
+    });
+  }
+
   async requestAdoption(adopterId: string, dto: CreateAdoptionDto) {
     return this.prisma.$transaction(async (tx) => {
       const pet = await tx.pet.findUnique({ where: { id: dto.petId } });
@@ -51,24 +86,6 @@ export class AdoptionService {
         throw new ConflictException('Pet has no owner assigned');
       }
 
-      const activeAdoption = await tx.adoption.findFirst({
-        where: {
-          petId: dto.petId,
-          status: {
-            in: [
-              AdoptionStatus.REQUESTED,
-              AdoptionStatus.PENDING,
-              AdoptionStatus.APPROVED,
-              AdoptionStatus.ESCROW_FUNDED,
-            ],
-          },
-        },
-      });
-
-      if (activeAdoption) {
-        throw new ConflictException('Pet is not available for adoption');
-      }
-
       const adoption = await tx.adoption.create({
         data: {
           petId: dto.petId,
@@ -79,10 +96,6 @@ export class AdoptionService {
         },
       });
 
-      this.logger.log(
-        `Adoption ${adoption.id} requested by adopter ${adopterId} for pet ${dto.petId}`,
-      );
-
       await this.events.logEvent({
         entityType: EventEntityType.ADOPTION,
         entityId: adoption.id,
@@ -92,7 +105,6 @@ export class AdoptionService {
           adoptionId: adoption.id,
           petId: dto.petId,
           ownerId: pet.currentOwnerId,
-          adopterId,
         } satisfies Prisma.InputJsonValue,
       });
 
@@ -100,11 +112,6 @@ export class AdoptionService {
     });
   }
 
-  /**
-   * Updates an adoption's status and fires the corresponding event when one exists.
-   * Throws NotFoundException if the adoption record does not exist.
-   * Any failure in logEvent propagates to the caller (no silent failures).
-   */
   async updateAdoptionStatus(
     adoptionId: string,
     actorId: string,
@@ -123,11 +130,8 @@ export class AdoptionService {
       data: { status: dto.status },
     });
 
-    this.logger.log(
-      `Adoption ${adoptionId} status updated to ${dto.status} by actor ${actorId}`,
-    );
-
     const eventType = ADOPTION_STATUS_EVENT_MAP[dto.status];
+
     if (eventType) {
       await this.events.logEvent({
         entityType: EventEntityType.ADOPTION,
@@ -137,8 +141,6 @@ export class AdoptionService {
         payload: {
           adoptionId,
           newStatus: dto.status,
-          petId: updated.petId,
-          adopterId: updated.adopterId,
         } satisfies Prisma.InputJsonValue,
       });
 
