@@ -174,4 +174,61 @@ export class AdoptionService {
 
     return updated;
   }
+
+  async approveAdoption(adoptionId: string, adminId: string) {
+  const adoption = await this.prisma.adoption.findUnique({
+    where: { id: adoptionId },
+    include: { pet: true, adopter: true },
+  });
+
+  if (!adoption) {
+    throw new NotFoundException(`Adoption with id "${adoptionId}" not found`);
+  }
+
+  if (adoption.status !== AdoptionStatus.PENDING) {
+    throw new ConflictException('Adoption is not pending');
+  }
+
+  const updated = await this.prisma.adoption.update({
+    where: { id: adoptionId },
+    data: {
+      status: AdoptionStatus.APPROVED,
+    },
+    include: { pet: true, adopter: true },
+  });
+
+  return updated;
+}
+
+async rejectAdoption(
+  adoptionId: string,
+  adminId: string,
+  reason?: string,
+) {
+  return this.prisma.$transaction(async (tx) => {
+    const adoption = await tx.adoption.findUnique({
+      where: { id: adoptionId },
+    });
+
+    if (!adoption) {
+      throw new NotFoundException(`Adoption with id "${adoptionId}" not found`);
+    }
+
+    if (adoption.status !== AdoptionStatus.PENDING) {
+      throw new ConflictException('Adoption is not pending');
+    }
+
+    const updated = await tx.adoption.update({
+      where: { id: adoptionId },
+      data: {
+        status: AdoptionStatus.REJECTED,
+        notes: reason ?? adoption.notes,
+      },
+      include: { pet: true, adopter: true },
+    });
+
+    return updated;
+  });
+}
+
 }
