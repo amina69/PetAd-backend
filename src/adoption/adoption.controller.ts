@@ -24,6 +24,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { EventsService } from '../events/events.service';
 import { EventEntityType, EventType } from '@prisma/client';
+import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 
 interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string; sub?: string };
@@ -61,9 +62,22 @@ export class AdoptionController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'APPROVED',
-    });
+    return this.adoptionService.approveAdoption(id, req.user.userId);
+  }
+
+  @Patch(':id/reject')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  rejectAdoption(
+  @Req() req: AuthRequest,
+  @Param('id') id: string,
+  @Body() dto: RejectAdoptionDto,
+  ) {
+    return this.adoptionService.rejectAdoption(
+      id,
+      req.user.userId,
+      dto.reason,
+    );
   }
 
   /**

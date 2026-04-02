@@ -32,7 +32,7 @@ export class AdoptionService {
     private readonly events: EventsService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
-  ) {}
+  ) { }
 
   /**
    * Creates an adoption request and fires an ADOPTION_REQUESTED event.
@@ -174,4 +174,86 @@ export class AdoptionService {
 
     return updated;
   }
+
+  async approveAdoption(adoptionId: string, adminId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const adoption = await tx.adoption.findUnique({
+        where: { id: adoptionId },
+        include: { pet: true },
+      });
+
+      if (!adoption) {
+        throw new NotFoundException(`Adoption not found`);
+      }
+
+      if (adoption.status !== AdoptionStatus.PENDING) {
+        throw new BadRequestException('Adoption is not pending');
+      }
+
+      // Approve adoption
+      const updated = await tx.adoption.update({
+        where: { id: adoptionId },
+        data: {
+          status: AdoptionStatus.APPROVED,
+        },
+        include: { pet: true, adopter: true, owner: true },
+      });
+
+      // Optional: log event (VERY important in your system)
+      await tx.eventLog.create({
+        data: {
+          entityType: EventEntityType.ADOPTION,
+          entityId: adoptionId,
+          eventType: EventType.ADOPTION_APPROVED,
+          actorId: adminId,
+          payload: {},
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  async rejectAdoption(
+    adoptionId: string,
+    adminId: string,
+    reason?: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const adoption = await tx.adoption.findUnique({
+        where: { id: adoptionId },
+      });
+
+      if (!adoption) {
+        throw new NotFoundException('Adoption not found');
+      }
+
+      if (adoption.status !== AdoptionStatus.PENDING) {
+        throw new BadRequestException('Adoption is not pending');
+      }
+
+      const updated = await tx.adoption.update({
+        where: { id: adoptionId },
+        data: {
+          status: AdoptionStatus.REJECTED,
+          notes: reason,
+        },
+        include: { pet: true, adopter: true, owner: true },
+      });
+
+      // Log event
+      await tx.eventLog.create({
+        data: {
+          entityType: EventEntityType.ADOPTION,
+          entityId: adoptionId,
+          eventType: EventType.ADOPTION_REQUESTED, // or define REJECTED if missing
+          actorId: adminId,
+          payload: { reason },
+        },
+      });
+
+      return updated;
+    });
+  }
+
 }
