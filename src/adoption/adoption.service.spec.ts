@@ -222,4 +222,57 @@ describe('AdoptionService', () => {
       ).rejects.toThrow('Event store unavailable');
     });
   });
+
+  // ─── findAll ──────────────────────────────────────────
+
+  describe('findAll', () => {
+    it('returns an empty array if no adoptions match', async () => {
+      mockPrisma.adoption.findMany.mockResolvedValue([]);
+      const result = await service.findAll({ id: 'user-1', role: 'USER' }, {});
+      expect(result).toEqual([]);
+      expect(mockPrisma.adoption.findMany).toHaveBeenCalledWith({
+        where: { adopterId: 'user-1' },
+        orderBy: { createdAt: 'desc' },
+        include: expect.any(Object),
+      });
+    });
+
+    it('allows ADMIN to see all adoptions', async () => {
+      mockPrisma.adoption.findMany.mockResolvedValue([mockAdoption]);
+      const result = await service.findAll({ id: 'admin-1', role: 'ADMIN' }, { status: 'REQUESTED' });
+      
+      expect(mockPrisma.adoption.findMany).toHaveBeenCalledWith({
+        where: { status: 'REQUESTED' },
+        orderBy: { createdAt: 'desc' },
+        include: expect.any(Object),
+      });
+      expect(result).toEqual([mockAdoption]);
+    });
+
+    it('restricts SHELTER to their own adoptions as owner', async () => {
+      mockPrisma.adoption.findMany.mockResolvedValue([mockAdoption]);
+      const result = await service.findAll({ id: 'shelter-1', role: 'SHELTER' }, { petId: 'pet-1' });
+
+      expect(mockPrisma.adoption.findMany).toHaveBeenCalledWith({
+        where: { petId: 'pet-1', ownerId: 'shelter-1' },
+        orderBy: { createdAt: 'desc' },
+        include: expect.any(Object),
+      });
+    });
+
+    it('verifies that a USER cannot see another user\'s adoptions (forces adopterId to user.id)', async () => {
+      mockPrisma.adoption.findMany.mockResolvedValue([mockAdoption]);
+      const result = await service.findAll({ id: 'user-2', role: 'USER' }, {});
+
+      expect(mockPrisma.adoption.findMany).toHaveBeenCalledWith({
+        where: { adopterId: 'user-2' },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          pet: { select: { id: true, name: true, species: true, imageUrl: true } },
+          adopter: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      });
+      // the query directly uses the user.id from the JWT payload to filter, blocking unauthorized access.
+    });
+  });
 });

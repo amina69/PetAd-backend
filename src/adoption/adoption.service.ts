@@ -174,4 +174,50 @@ export class AdoptionService {
 
     return updated;
   }
+
+  /**
+   * Retrieves a list of adoptions based on the user's role and provided filters.
+   * - ADMIN: Sees all adoptions (filtered by query)
+   * - SHELTER: Sees only adoptions where they are the owner (plus query filters)
+   * - USER: Sees only adoptions where they are the adopter (plus query filters)
+   */
+  async findAll(user: any, query: import('./dto/filter-adoptions.dto').FilterAdoptionsDto) {
+    let where: Prisma.AdoptionWhereInput = { ...query };
+
+    // Standardize getting the user ID (could be id or userId depending on the JWT payload)
+    const currentUserId = user.id || user.userId;
+
+    if (user.role === 'ADMIN') {
+      where = { ...query };
+    } else if (user.role === 'SHELTER') {
+      where = { ...query, ownerId: currentUserId };
+    } else {
+      // Default to USER role restrictions
+      where = { ...query, adopterId: currentUserId };
+    }
+
+    return this.prisma.adoption.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        pet: {
+          select: {
+            id: true,
+            name: true,
+            species: true,
+            imageUrl: true, // as per Prisma schema
+          },
+        },
+        adopter: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            // crucial: password is not included
+          },
+        },
+      },
+    });
+  }
 }
