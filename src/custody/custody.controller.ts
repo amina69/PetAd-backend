@@ -5,6 +5,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Param,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -78,5 +79,57 @@ export class CustodyController {
     @Body() createCustodyDto: CreateCustodyDto,
   ): Promise<CustodyResponseDto> {
     return this.custodyService.createCustody(user.userId, createCustodyDto);
+  }
+
+  @Post(':id/return')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Return custody agreement',
+    description:
+      'End custody agreement successfully. Releases escrow and updates trust score positively',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Custody successfully returned',
+    type: CustodyResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Custody not active',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Custody does not exist',
+  })
+  async returnCustody(@Param('id') custodyId: string): Promise<CustodyResponseDto> {
+    return this.custodyService.returnCustody(custodyId);
+  }
+
+  @Post(':id/violation')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Mark custody as violation',
+    description:
+      'Report custody violation. Refunds escrow and penalizes trust score',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Custody marked as violation',
+    type: CustodyResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request - Custody not active',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Custody does not exist',
+  })
+  async violationCustody(@Param('id') custodyId: string): Promise<CustodyResponseDto> {
+    return this.custodyService.violationCustody(custodyId);
   }
 }

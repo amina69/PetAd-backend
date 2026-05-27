@@ -83,4 +83,34 @@ export class EscrowService {
       return updatedEscrow;
     });
   }
+
+  async refundEscrow(escrowId: string, txHash?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const escrow = await tx.escrow.findUnique({
+        where: { id: escrowId },
+      });
+
+      if (!escrow) {
+        throw new NotFoundException('Escrow not found');
+      }
+
+      const updatedEscrow = await tx.escrow.update({
+        where: { id: escrowId },
+        data: {
+          status: EscrowStatus.REFUNDED,
+          refundTxHash: txHash,
+        },
+      });
+
+      await this.events.logEvent({
+        entityType: EventEntityType.ESCROW,
+        entityId: escrowId,
+        eventType: EventType.ESCROW_REFUNDED,
+        txHash,
+        payload: { amount: Number(escrow.amount) },
+      });
+
+      return updatedEscrow;
+    });
+  }
 }
