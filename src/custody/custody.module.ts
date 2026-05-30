@@ -5,11 +5,12 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EventsModule } from '../events/events.module';
 import { EscrowModule } from '../escrow/escrow.module';
 import { UsersModule } from '../users/users.module';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 
 @Module({
   imports: [PrismaModule, EventsModule, EscrowModule, UsersModule],
   controllers: [CustodyController],
-  providers: [CustodyService],
+  providers: [CustodyService, PetAvailabilityService],
   exports: [CustodyService],
 })
 export class CustodyModule {}

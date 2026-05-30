@@ -10,8 +10,9 @@ import { EscrowService } from '../escrow/escrow.service';
 import { UsersService } from '../users/users.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
-import { CustodyStatus } from '@prisma/client';
+import { CustodyStatus, EventType, EventEntityType } from '@prisma/client';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 
 @Injectable()
 export class CustodyService {
@@ -20,6 +21,7 @@ export class CustodyService {
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
     private readonly usersService: UsersService,
+    private readonly petAvailabilityService: PetAvailabilityService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -151,6 +153,22 @@ export class CustodyService {
       },
     });
 
+    // Log pet availability change: AVAILABLE → IN_CUSTODY (once custody becomes ACTIVE)
+    // Note: custody is created as PENDING; availability becomes IN_CUSTODY when activated.
+    // We log the intent here so the audit trail is complete.
+    await this.eventsService.logEvent({
+      entityType: EventEntityType.PET,
+      entityId: custody.petId,
+      eventType: EventType.PET_AVAILABILITY_CHANGED,
+      actorId: userId,
+      payload: {
+        petId: custody.petId,
+        newAvailability: await this.petAvailabilityService.resolve(custody.petId),
+        reason: 'custody_started',
+        custodyId: custody.id,
+      },
+    });
+
     // Best-effort: enqueue a notification email without blocking custody creation.
     if (this.notificationQueueService) {
       try {
@@ -217,6 +235,23 @@ export class CustodyService {
         },
       });
 
+      // Log pet availability change: IN_CUSTODY → AVAILABLE (or PENDING if adoption exists)
+      const newAvailability = await this.petAvailabilityService.resolve(
+        custody.petId,
+      );
+      await this.eventsService.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: custody.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          newAvailability,
+          reason: 'custody_returned',
+          custodyId,
+        },
+      });
+
       if (custody.escrowId) {
         await this.escrowService.releaseEscrow(custody.escrowId);
       }
@@ -258,6 +293,23 @@ export class CustodyService {
         payload: {
           petId: custody.petId,
           holderId: custody.holderId,
+        },
+      });
+
+      // Log pet availability change after violation
+      const newAvailability = await this.petAvailabilityService.resolve(
+        custody.petId,
+      );
+      await this.eventsService.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: custody.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          newAvailability,
+          reason: 'custody_violation',
+          custodyId,
         },
       });
 
