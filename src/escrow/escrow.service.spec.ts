@@ -3,6 +3,7 @@ import { EscrowService } from './escrow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotFoundException } from '@nestjs/common';
+import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 import { EscrowStatus, AdoptionStatus, EventType, EventEntityType } from '@prisma/client';
 
 describe('EscrowService', () => {
@@ -29,12 +30,20 @@ describe('EscrowService', () => {
         logEvent: jest.fn(),
     };
 
+    const mockAdoptionStateMachine = {
+        assertValidTransition: jest.fn(),
+        canTransition: jest.fn(),
+    };
+
     beforeEach(async () => {
+        jest.clearAllMocks();
+
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 EscrowService,
                 { provide: PrismaService, useValue: mockPrismaService },
                 { provide: EventsService, useValue: mockEventsService },
+                { provide: AdoptionStateMachine, useValue: mockAdoptionStateMachine },
             ],
         }).compile();
 
@@ -95,6 +104,7 @@ describe('EscrowService', () => {
                 id: 'adoption-123',
                 petId: 'pet-123',
                 adopterId: 'adopter-123',
+                status: AdoptionStatus.ESCROW_FUNDED,
             };
 
             const mockEscrow = {
@@ -108,6 +118,11 @@ describe('EscrowService', () => {
             mockPrismaService.escrow.update.mockResolvedValueOnce({ ...mockEscrow, status: EscrowStatus.RELEASED });
 
             const result = await service.releaseEscrow(escrowId, txHash);
+
+            expect(mockAdoptionStateMachine.assertValidTransition).toHaveBeenCalledWith(
+                AdoptionStatus.ESCROW_FUNDED,
+                AdoptionStatus.COMPLETED,
+            );
 
             expect(mockPrismaService.adoption.update).toHaveBeenCalledWith({
                 where: { id: mockAdoption.id },

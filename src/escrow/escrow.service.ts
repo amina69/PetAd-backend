@@ -2,12 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowStatus, AdoptionStatus, EventEntityType, EventType } from '@prisma/client';
+import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 
 @Injectable()
 export class EscrowService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    private readonly adoptionStateMachine: AdoptionStateMachine,
   ) { }
 
   async createEscrow(amount: number, tx?: any) {
@@ -59,6 +61,12 @@ export class EscrowService {
       // 2. If escrow is tied to an Adoption, update Adoption and Pet
       if (escrow.adoption) {
         const adoption = escrow.adoption;
+
+        // Enforce state machine: ensure adoption is in ESCROW_FUNDED before completing
+        this.adoptionStateMachine.assertValidTransition(
+          adoption.status as AdoptionStatus,
+          AdoptionStatus.COMPLETED,
+        );
 
         await tx.adoption.update({
           where: { id: adoption.id },
