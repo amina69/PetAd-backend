@@ -3,7 +3,9 @@ import { NotFoundException, ConflictException } from '@nestjs/common';
 import { AdoptionService } from './adoption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { EventType, EventEntityType, AdoptionStatus } from '@prisma/client';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 const ADOPTER_ID = 'adopter-uuid';
 const PET_ID = 'pet-uuid';
@@ -42,14 +44,20 @@ describe('AdoptionService', () => {
     logEvent: jest.fn(),
   };
 
+  const mockPetAvailabilityService = {
+    resolve: jest.fn().mockResolvedValue(PetStatus.AVAILABLE),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdoptionService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventsService, useValue: mockEvents },
+        { provide: PetAvailabilityService, useValue: mockPetAvailabilityService },
       ],
     }).compile();
 
@@ -61,7 +69,7 @@ describe('AdoptionService', () => {
   describe('requestAdoption', () => {
     const dto = { petId: PET_ID, ownerId: OWNER_ID };
 
-    it('creates the adoption record and fires ADOPTION_REQUESTED', async () => {
+    it('creates the adoption record and fires ADOPTION_REQUESTED and PET_AVAILABILITY_CHANGED', async () => {
       mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: OWNER_ID });
       mockPrisma.adoption.findFirst.mockResolvedValue(null);
       mockPrisma.adoption.create.mockResolvedValue(mockAdoption);
@@ -79,6 +87,7 @@ describe('AdoptionService', () => {
         },
       });
 
+      // First call: ADOPTION_REQUESTED domain event
       expect(mockEvents.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: EventEntityType.ADOPTION,
@@ -88,6 +97,21 @@ describe('AdoptionService', () => {
         }),
       );
 
+      // Second call: PET_AVAILABILITY_CHANGED audit event
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: EventEntityType.PET,
+          entityId: PET_ID,
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
+          actorId: ADOPTER_ID,
+          payload: expect.objectContaining({
+            newAvailability: 'PENDING',
+            reason: 'adoption_requested',
+          }),
+        }),
+      );
+
+      expect(mockEvents.logEvent).toHaveBeenCalledTimes(2);
       expect(result).toEqual(mockAdoption);
     });
 
@@ -138,7 +162,7 @@ describe('AdoptionService', () => {
   // ─── updateAdoptionStatus ─────────────────────────────
 
   describe('updateAdoptionStatus', () => {
-    it('updates status to APPROVED and fires ADOPTION_APPROVED', async () => {
+    it('updates status to APPROVED and fires ADOPTION_APPROVED only (no availability change)', async () => {
       const updated = { ...mockAdoption, status: AdoptionStatus.APPROVED };
       mockPrisma.adoption.findUnique.mockResolvedValue(mockAdoption);
       mockPrisma.adoption.update.mockResolvedValue(updated);
@@ -161,14 +185,17 @@ describe('AdoptionService', () => {
         }),
       );
 
+      // APPROVED does not affect availability (still PENDING), so only 1 event
+      expect(mockEvents.logEvent).toHaveBeenCalledTimes(1);
       expect(result.status).toBe(AdoptionStatus.APPROVED);
     });
 
-    it('updates status to COMPLETED and fires ADOPTION_COMPLETED', async () => {
+    it('updates status to COMPLETED and fires ADOPTION_COMPLETED and PET_AVAILABILITY_CHANGED', async () => {
       const updated = { ...mockAdoption, status: AdoptionStatus.COMPLETED };
       mockPrisma.adoption.findUnique.mockResolvedValue(mockAdoption);
       mockPrisma.adoption.update.mockResolvedValue(updated);
       mockEvents.logEvent.mockResolvedValue({});
+      mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.ADOPTED);
 
       await service.updateAdoptionStatus(ADOPTION_ID, ACTOR_ID, {
         status: 'COMPLETED',
@@ -179,19 +206,41 @@ describe('AdoptionService', () => {
           eventType: EventType.ADOPTION_COMPLETED,
         }),
       );
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
+          payload: expect.objectContaining({
+            newAvailability: PetStatus.ADOPTED,
+            reason: 'adoption_completed',
+          }),
+        }),
+      );
+      expect(mockEvents.logEvent).toHaveBeenCalledTimes(2);
     });
 
-    it('updates status to REJECTED without firing an event', async () => {
+    it('updates status to REJECTED and fires PET_AVAILABILITY_CHANGED (no ADOPTION domain event)', async () => {
       const updated = { ...mockAdoption, status: AdoptionStatus.REJECTED };
       mockPrisma.adoption.findUnique.mockResolvedValue(mockAdoption);
       mockPrisma.adoption.update.mockResolvedValue(updated);
+      mockEvents.logEvent.mockResolvedValue({});
+      mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
 
       await service.updateAdoptionStatus(ADOPTION_ID, ACTOR_ID, {
         status: 'REJECTED',
       });
 
-      // REJECTED has no mapped EventType — logEvent should NOT be called
-      expect(mockEvents.logEvent).not.toHaveBeenCalled();
+      // REJECTED has no mapped adoption EventType, but does fire PET_AVAILABILITY_CHANGED
+      expect(mockEvents.logEvent).toHaveBeenCalledTimes(1);
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: EventEntityType.PET,
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
+          payload: expect.objectContaining({
+            newAvailability: PetStatus.AVAILABLE,
+            reason: 'adoption_rejected',
+          }),
+        }),
+      );
     });
 
     it('throws NotFoundException when adoption does not exist', async () => {

@@ -4,7 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PetAvailabilityService } from './services/pet-availability.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreatePetDto } from './dto/create-pet.dto';
-import { PetSpecies } from '../common/enums';
+import { PetSpecies, PetStatus } from '../common/enums';
+import { AdoptionStatus } from '@prisma/client';
 
 const mockPrisma = {
   pet: {
@@ -18,6 +19,7 @@ const mockPrisma = {
 };
 
 const mockAvailabilityService = {
+  resolve: jest.fn(),
   getPetAvailability: jest.fn(),
 };
 
@@ -78,8 +80,86 @@ describe('PetsService', () => {
 
     const result = await service.findAll({});
 
-    expect(result.data[0].isAvailable).toBe(true);
+    expect(result.data[0].availability).toBe(PetStatus.AVAILABLE);
     expect(result.meta.total).toBe(1);
+  });
+
+  it('should compute ADOPTED when a COMPLETED adoption is present', async () => {
+    const mockPets = [
+      {
+        id: '1',
+        name: 'Buddy',
+        adoptions: [{ id: 'a1', status: AdoptionStatus.COMPLETED }],
+        custodies: [],
+        currentOwner: null,
+      },
+    ];
+
+    mockPrisma.pet.findMany.mockResolvedValue(mockPets);
+    mockPrisma.pet.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result.data[0].availability).toBe(PetStatus.ADOPTED);
+  });
+
+  it('should compute IN_CUSTODY when an active custody is present', async () => {
+    const mockPets = [
+      {
+        id: '1',
+        name: 'Buddy',
+        adoptions: [],
+        custodies: [{ id: 'c1' }],
+        currentOwner: null,
+      },
+    ];
+
+    mockPrisma.pet.findMany.mockResolvedValue(mockPets);
+    mockPrisma.pet.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result.data[0].availability).toBe(PetStatus.IN_CUSTODY);
+  });
+
+  it('should compute PENDING when an in-progress adoption is present', async () => {
+    const mockPets = [
+      {
+        id: '1',
+        name: 'Buddy',
+        adoptions: [{ id: 'a1', status: AdoptionStatus.REQUESTED }],
+        custodies: [],
+        currentOwner: null,
+      },
+    ];
+
+    mockPrisma.pet.findMany.mockResolvedValue(mockPets);
+    mockPrisma.pet.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result.data[0].availability).toBe(PetStatus.PENDING);
+  });
+
+  it('should not expose raw adoptions/custodies arrays in findAll response', async () => {
+    const mockPets = [
+      {
+        id: '1',
+        name: 'Buddy',
+        adoptions: [],
+        custodies: [],
+        currentOwner: null,
+      },
+    ];
+
+    mockPrisma.pet.findMany.mockResolvedValue(mockPets);
+    mockPrisma.pet.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result.data[0]).not.toHaveProperty('adoptions');
+    expect(result.data[0]).not.toHaveProperty('custodies');
+    expect(result.data[0]).toHaveProperty('availability');
   });
 
   it('should filter by species', async () => {
@@ -183,5 +263,19 @@ describe('PetsService', () => {
     mockPrisma.pet.findUnique.mockResolvedValue(null);
 
     await expect(service.findOne('bad-id')).rejects.toThrow(NotFoundException);
+  });
+
+  it('should return pet with computed availability from resolve()', async () => {
+    mockPrisma.pet.findUnique.mockResolvedValue({
+      id: 'pet-1',
+      name: 'Buddy',
+      currentOwner: null,
+    });
+    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+
+    const result = await service.findOne('pet-1');
+
+    expect(result).toMatchObject({ id: 'pet-1', availability: PetStatus.AVAILABLE });
+    expect(mockAvailabilityService.resolve).toHaveBeenCalledWith('pet-1');
   });
 });
