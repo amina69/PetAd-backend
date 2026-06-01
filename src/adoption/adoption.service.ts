@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
+import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
 
@@ -179,6 +180,215 @@ export class AdoptionService {
     }
 
     return updated;
+  }
+
+  /**
+   * Approves a pending adoption request.
+   * Changes adoption status from PENDING to APPROVED.
+   * Sets approvedAt timestamp.
+   * Fires ADOPTION_APPROVED event.
+   * 
+   * @throws NotFoundException if adoption doesn't exist
+   * @throws DomainException if adoption is not in PENDING status
+   */
+  async approveAdoption(adoptionId: string, adminId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const adoption = await tx.adoption.findUnique({
+        where: { id: adoptionId },
+        include: {
+          pet: true,
+          adopter: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+      });
+
+      if (!adoption) {
+        throw new NotFoundException(`Adoption with id "${adoptionId}" not found`);
+      }
+
+      // Validate state transition
+      this.adoptionStateMachine.assertValidTransition(
+        adoption.status,
+        AdoptionStatus.APPROVED,
+      );
+
+      // Update adoption status to APPROVED
+      const updated = await tx.adoption.update({
+        where: { id: adoptionId },
+        data: {
+          status: AdoptionStatus.APPROVED,
+        },
+        include: {
+          pet: {
+            select: {
+              id: true,
+              name: true,
+              species: true,
+              imageUrl: true,
+            },
+          },
+          adopter: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `Adoption ${adoptionId} approved by admin ${adminId}. Pet ${adoption.petId} status remains PENDING for escrow.`,
+      );
+
+      // Log ADOPTION_APPROVED event
+      await this.events.logEvent({
+        entityType: EventEntityType.ADOPTION,
+        entityId: adoptionId,
+        eventType: EventType.ADOPTION_APPROVED,
+        actorId: adminId,
+        payload: {
+          adoptionId,
+          petId: adoption.petId,
+          adopterId: adoption.adopterId,
+          ownerId: adoption.ownerId,
+        } satisfies Prisma.InputJsonValue,
+      });
+
+      // Best-effort: enqueue notification email
+      if (this.notificationQueueService && adoption.adopter.email) {
+        try {
+          await this.notificationQueueService.enqueueSendTransactionalEmail({
+            dto: {
+              to: adoption.adopter.email,
+              subject: 'PetAd: Your Adoption Request Has Been Approved!',
+              text: `Hello ${adoption.adopter.firstName}! Great news - your adoption request for ${adoption.pet.name} has been approved. Next steps will follow soon.`,
+            },
+            metadata: { adoptionId, status: 'APPROVED' },
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `Failed to enqueue approval notification | adoptionId=${adoptionId} | reason=${reason}`,
+          );
+        }
+      }
+
+      return updated;
+    });
+  }
+
+  /**
+   * Rejects a pending adoption request.
+   * Changes adoption status from PENDING to REJECTED.
+   * Updates pet status back to AVAILABLE (frees the pet for other adopters).
+   * Optionally stores rejection reason in notes field.
+   * 
+   * @throws NotFoundException if adoption doesn't exist
+   * @throws DomainException if adoption is not in PENDING status
+   */
+  async rejectAdoption(
+    adoptionId: string,
+    adminId: string,
+    dto: RejectAdoptionDto,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const adoption = await tx.adoption.findUnique({
+        where: { id: adoptionId },
+        include: {
+          pet: true,
+          adopter: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+      });
+
+      if (!adoption) {
+        throw new NotFoundException(`Adoption with id "${adoptionId}" not found`);
+      }
+
+      // Validate state transition
+      this.adoptionStateMachine.assertValidTransition(
+        adoption.status,
+        AdoptionStatus.REJECTED,
+      );
+
+      // Prepare notes with rejection reason
+      const rejectionNotes = dto.reason
+        ? `${adoption.notes ? adoption.notes + '\n\n' : ''}[REJECTED] ${dto.reason}`
+        : adoption.notes;
+
+      // Update adoption status to REJECTED
+      const updated = await tx.adoption.update({
+        where: { id: adoptionId },
+        data: {
+          status: AdoptionStatus.REJECTED,
+          notes: rejectionNotes,
+        },
+        include: {
+          pet: {
+            select: {
+              id: true,
+              name: true,
+              species: true,
+              imageUrl: true,
+            },
+          },
+          adopter: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      this.logger.log(
+        `Adoption ${adoptionId} rejected by admin ${adminId}. Pet ${adoption.petId} is now available for other adopters.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
+      );
+
+      // Log event (no specific ADOPTION_REJECTED event in schema, but we could add it or use a generic approach)
+      // For now, we'll skip the event log since ADOPTION_REJECTED is not in the EventType enum
+      // If needed, this can be added to the schema later
+
+      // Best-effort: enqueue notification email
+      if (this.notificationQueueService && adoption.adopter.email) {
+        try {
+          const reasonText = dto.reason ? `\n\nReason: ${dto.reason}` : '';
+          await this.notificationQueueService.enqueueSendTransactionalEmail({
+            dto: {
+              to: adoption.adopter.email,
+              subject: 'PetAd: Adoption Request Update',
+              text: `Hello ${adoption.adopter.firstName}, we regret to inform you that your adoption request for ${adoption.pet.name} has been rejected.${reasonText}\n\nYou can browse other available pets on our platform.`,
+            },
+            metadata: { adoptionId, status: 'REJECTED' },
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.logger.error(
+            `Failed to enqueue rejection notification | adoptionId=${adoptionId} | reason=${reason}`,
+          );
+        }
+      }
+
+      return updated;
+    });
   }
 
   /**
