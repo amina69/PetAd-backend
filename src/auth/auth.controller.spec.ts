@@ -8,6 +8,9 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
 process.env.JWT_SECRET = 'super-secret-test-key';
+process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
+process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/auth/google/callback';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
