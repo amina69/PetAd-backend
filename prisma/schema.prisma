@@ -92,24 +92,15 @@ enum LogLevel {
   WARN
   ERROR
 }
-
-enum AuthProvider {
-  LOCAL
-  GOOGLE
-}
-
 // ─── Models ──────────────────────────────────────────────
 
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
-  password  String?
+  password  String
   firstName String   @map("first_name")
   lastName  String   @map("last_name")
   role      UserRole @default(USER)
-
-  provider   AuthProvider @default(LOCAL)
-  providerId String?      @map("provider_id")
 
   trustScore Float   @default(50)
 
