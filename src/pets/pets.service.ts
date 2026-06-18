@@ -12,7 +12,7 @@ import {
   PaginationMetaDto,
 } from '../common/dto/paginated-response.dto';
 import { Prisma, AdoptionStatus, CustodyStatus } from '@prisma/client';
-import { UserRole } from '../common/enums';
+import { UserRole, PetStatus } from '../common/enums';
 import { PetAvailabilityService } from './services/pet-availability.service';
 
 @Injectable()
@@ -32,10 +32,9 @@ export class PetsService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    const isAvailable =
-      await this.availabilityService.getPetAvailability(petId);
+    const availability = await this.availabilityService.resolve(petId);
 
-    return { ...pet, isAvailable };
+    return { ...pet, availability };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
@@ -102,11 +101,13 @@ export class PetsService {
                 notIn: [AdoptionStatus.REJECTED, AdoptionStatus.CANCELLED],
               },
             },
+            select: { id: true, status: true },
           },
           custodies: {
             where: {
               status: CustodyStatus.ACTIVE,
             },
+            select: { id: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -114,10 +115,15 @@ export class PetsService {
       this.prisma.pet.count({ where }),
     ]);
 
-    const data = pets.map((pet) => ({
-      ...pet,
-      isAvailable: pet.adoptions.length === 0 && pet.custodies.length === 0,
-    }));
+    const data = pets.map((pet) => {
+      const availability = computeAvailabilityFromIncludes(
+        pet.adoptions,
+        pet.custodies,
+      );
+      // Strip the raw relation arrays from the response — consumers should use `availability`
+      const { adoptions: _a, custodies: _c, ...petFields } = pet;
+      return { ...petFields, availability };
+    });
 
     const meta = new PaginationMetaDto(page, limit, total);
 
@@ -161,4 +167,38 @@ export class PetsService {
     await this.prisma.pet.delete({ where: { id } });
     return { message: 'Pet deleted successfully' };
   }
+}
+
+/**
+ * Derives PetStatus from already-fetched adoption and custody arrays.
+ * Used in `findAll` to avoid N+1 queries — the relations are loaded in the
+ * bulk query and we compute availability inline.
+ *
+ * Priority mirrors PetAvailabilityService.resolve():
+ *   ADOPTED > IN_CUSTODY > PENDING > AVAILABLE
+ */
+function computeAvailabilityFromIncludes(
+  adoptions: Array<{ status: string }>,
+  custodies: Array<{ id: string }>,
+): PetStatus {
+  if (adoptions.some((a) => a.status === AdoptionStatus.COMPLETED)) {
+    return PetStatus.ADOPTED;
+  }
+
+  if (custodies.length > 0) {
+    return PetStatus.IN_CUSTODY;
+  }
+
+  const pendingStatuses: string[] = [
+    AdoptionStatus.REQUESTED,
+    AdoptionStatus.PENDING,
+    AdoptionStatus.APPROVED,
+    AdoptionStatus.ESCROW_FUNDED,
+  ];
+
+  if (adoptions.some((a) => pendingStatuses.includes(a.status))) {
+    return PetStatus.PENDING;
+  }
+
+  return PetStatus.AVAILABLE;
 }

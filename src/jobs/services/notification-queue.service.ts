@@ -45,6 +45,11 @@ export class NotificationQueueService implements OnModuleDestroy {
     );
   }
 
+  /** Exposes the underlying BullMQ Queue for dashboard registration. */
+  getQueue(): Queue<SendTransactionalEmailJobInput> {
+    return this.queue;
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
   }

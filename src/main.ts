@@ -5,6 +5,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AppLogger } from './common/logger/logger.service';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { setupQueueDashboard } from './queue-dashboard/queue-dashboard.setup';
 
 // This bootstrap function is like aFactory that builds our NestJS app - it creates,
 // configures, and starts the entire application server, making it ready to handle requests.
@@ -50,6 +51,9 @@ app.useGlobalFilters(
   const document = SwaggerModule.createDocument(app, config);
 
   SwaggerModule.setup('api/docs', app, document);
+
+  // Mount Bull Board queue dashboard at /admin/queues (Basic Auth protected)
+  setupQueueDashboard(app);
 
   await app.listen(port, '0.0.0.0');
 

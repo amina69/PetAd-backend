@@ -17,6 +17,7 @@ import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
 
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
@@ -32,6 +33,7 @@ export class AdoptionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    private readonly petAvailabilityService: PetAvailabilityService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
@@ -99,6 +101,21 @@ export class AdoptionService {
         } satisfies Prisma.InputJsonValue,
       });
 
+      // Log pet availability change: AVAILABLE → PENDING
+      await this.events.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: dto.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId: adopterId,
+        payload: {
+          petId: dto.petId,
+          previousAvailability: 'AVAILABLE',
+          newAvailability: 'PENDING',
+          reason: 'adoption_requested',
+          adoptionId: adoption.id,
+        } satisfies Prisma.InputJsonValue,
+      });
+
       return adoption;
     });
   }
@@ -148,7 +165,36 @@ export class AdoptionService {
           adopterId: updated.adopterId,
         } satisfies Prisma.InputJsonValue,
       });
+    }
 
+    // Log pet availability change whenever the adoption status affects availability.
+    // Statuses that change availability: COMPLETED (→ ADOPTED), REJECTED/CANCELLED (→ re-evaluate).
+    const availabilityAffectingStatuses: AdoptionStatus[] = [
+      AdoptionStatus.COMPLETED,
+      AdoptionStatus.REJECTED,
+      AdoptionStatus.CANCELLED,
+    ];
+
+    if (availabilityAffectingStatuses.includes(dto.status)) {
+      const newAvailability = await this.petAvailabilityService.resolve(
+        updated.petId,
+      );
+
+      await this.events.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: updated.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId,
+        payload: {
+          petId: updated.petId,
+          newAvailability,
+          reason: `adoption_${dto.status.toLowerCase()}`,
+          adoptionId,
+        } satisfies Prisma.InputJsonValue,
+      });
+    }
+
+    if (eventType) {
       // Best-effort: enqueue a notification email without blocking status updates.
       if (this.notificationQueueService) {
         try {
