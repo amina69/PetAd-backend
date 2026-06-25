@@ -112,9 +112,13 @@ export class AdoptionController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   completeAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'COMPLETED',
-    });
+    return this.adoptionService.updateAdoptionStatus(
+      id,
+      (req.user.userId || req.user.sub) as string,
+      {
+        status: 'COMPLETED',
+      },
+    );
   }
 
   @Post(':id/documents')
