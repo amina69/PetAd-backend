@@ -43,7 +43,7 @@ export class UsersController {
   ) {}
 
   private checkOwnership(req: AuthRequest, id: string) {
-    if (req.user.userId !== id && req.user.role !== 'ADMIN') {
+    if ((req.user.userId || req.user.sub) !== id && req.user.role !== 'ADMIN') {
       throw new UnauthorizedException();
     }
   }

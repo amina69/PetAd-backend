@@ -401,7 +401,7 @@ export class AdoptionService {
     let where: Prisma.AdoptionWhereInput = { ...query };
 
     // Standardize getting the user ID (could be id or userId depending on the JWT payload)
-    const currentUserId = user.id || user.userId;
+    const currentUserId = user.id || user.userId || user.sub;
 
     if (user.role === 'ADMIN') {
       where = { ...query };
