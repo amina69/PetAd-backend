@@ -4,8 +4,10 @@ import { AdoptionService } from './adoption.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { EventType, EventEntityType, AdoptionStatus } from '@prisma/client';
 import { DomainException } from '../common/exceptions/domain.exception';
+import { PetStatus } from '../common/enums';
 
 const ADOPTER_ID = 'adopter-uuid';
 const PET_ID = 'pet-uuid';
@@ -50,8 +52,13 @@ describe('AdoptionService', () => {
     canTransition: jest.fn(),
   };
 
+  const mockPetAvailabilityService = {
+    resolve: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -59,6 +66,7 @@ describe('AdoptionService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventsService, useValue: mockEvents },
         { provide: AdoptionStateMachine, useValue: mockStateMachine },
+        { provide: PetAvailabilityService, useValue: mockPetAvailabilityService },
       ],
     }).compile();
 
@@ -70,7 +78,7 @@ describe('AdoptionService', () => {
   describe('requestAdoption', () => {
     const dto = { petId: PET_ID, ownerId: OWNER_ID };
 
-    it('creates the adoption record and fires ADOPTION_REQUESTED', async () => {
+    it('creates the adoption record and fires ADOPTION_REQUESTED + PET_AVAILABILITY_CHANGED', async () => {
       mockPrisma.pet.findUnique.mockResolvedValue({ id: PET_ID, currentOwnerId: OWNER_ID });
       mockPrisma.adoption.findFirst.mockResolvedValue(null);
       mockPrisma.adoption.create.mockResolvedValue(mockAdoption);
@@ -94,6 +102,14 @@ describe('AdoptionService', () => {
           entityId: ADOPTION_ID,
           eventType: EventType.ADOPTION_REQUESTED,
           actorId: ADOPTER_ID,
+        }),
+      );
+
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: EventEntityType.PET,
+          entityId: PET_ID,
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
         }),
       );
 
@@ -178,11 +194,12 @@ describe('AdoptionService', () => {
       expect(result.status).toBe(AdoptionStatus.APPROVED);
     });
 
-    it('updates status to COMPLETED and fires ADOPTION_COMPLETED', async () => {
+    it('updates status to COMPLETED and fires ADOPTION_COMPLETED + PET_AVAILABILITY_CHANGED', async () => {
       const updated = { ...mockAdoption, status: AdoptionStatus.COMPLETED };
       mockPrisma.adoption.findUnique.mockResolvedValue(mockAdoption);
       mockPrisma.adoption.update.mockResolvedValue(updated);
       mockEvents.logEvent.mockResolvedValue({});
+      mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.ADOPTED);
 
       await service.updateAdoptionStatus(ADOPTION_ID, ACTOR_ID, {
         status: 'COMPLETED',
@@ -198,12 +215,23 @@ describe('AdoptionService', () => {
           eventType: EventType.ADOPTION_COMPLETED,
         }),
       );
+
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: EventEntityType.PET,
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
+          payload: expect.objectContaining({
+            newAvailability: PetStatus.ADOPTED,
+          }),
+        }),
+      );
     });
 
-    it('updates status to REJECTED without firing an event', async () => {
+    it('updates status to REJECTED and fires PET_AVAILABILITY_CHANGED', async () => {
       const updated = { ...mockAdoption, status: AdoptionStatus.REJECTED };
       mockPrisma.adoption.findUnique.mockResolvedValue(mockAdoption);
       mockPrisma.adoption.update.mockResolvedValue(updated);
+      mockPetAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
 
       await service.updateAdoptionStatus(ADOPTION_ID, ACTOR_ID, {
         status: 'REJECTED',
@@ -214,8 +242,12 @@ describe('AdoptionService', () => {
         'REJECTED',
       );
 
-      // REJECTED has no mapped EventType — logEvent should NOT be called
-      expect(mockEvents.logEvent).not.toHaveBeenCalled();
+      expect(mockEvents.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: EventEntityType.PET,
+          eventType: EventType.PET_AVAILABILITY_CHANGED,
+        }),
+      );
     });
 
     it('throws NotFoundException when adoption does not exist', async () => {

@@ -13,11 +13,13 @@ import {
   AdoptionStatus,
   Prisma,
 } from '@prisma/client';
+import { PetStatus } from '../common/enums';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
@@ -33,6 +35,7 @@ export class AdoptionService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
+    private readonly petAvailabilityService: PetAvailabilityService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -96,6 +99,19 @@ export class AdoptionService {
           petId: dto.petId,
           ownerId: pet.currentOwnerId,
           adopterId,
+        } satisfies Prisma.InputJsonValue,
+      });
+
+      await this.events.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: dto.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId: adopterId,
+        payload: {
+          petId: dto.petId,
+          newAvailability: PetStatus.PENDING,
+          reason: 'adoption_requested',
+          adoptionId: adoption.id,
         } satisfies Prisma.InputJsonValue,
       });
 
@@ -177,6 +193,32 @@ export class AdoptionService {
           );
         }
       }
+    }
+
+    // Log pet availability change for statuses that affect it
+    const availabilityAffectingStatuses: AdoptionStatus[] = [
+      AdoptionStatus.COMPLETED,
+      AdoptionStatus.REJECTED,
+      AdoptionStatus.CANCELLED,
+    ];
+
+    if (availabilityAffectingStatuses.includes(dto.status)) {
+      const newAvailability = await this.petAvailabilityService.resolve(
+        updated.petId,
+      );
+
+      await this.events.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: updated.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId,
+        payload: {
+          petId: updated.petId,
+          newAvailability,
+          reason: `adoption_${dto.status.toLowerCase()}`,
+          adoptionId,
+        } satisfies Prisma.InputJsonValue,
+      });
     }
 
     return updated;
@@ -363,9 +405,19 @@ export class AdoptionService {
         `Adoption ${adoptionId} rejected by admin ${adminId}. Pet ${adoption.petId} is now available for other adopters.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
       );
 
-      // Log event (no specific ADOPTION_REJECTED event in schema, but we could add it or use a generic approach)
-      // For now, we'll skip the event log since ADOPTION_REJECTED is not in the EventType enum
-      // If needed, this can be added to the schema later
+      // Log pet availability change: PENDING → AVAILABLE (or other computed state)
+      await this.events.logEvent({
+        entityType: EventEntityType.PET,
+        entityId: adoption.petId,
+        eventType: EventType.PET_AVAILABILITY_CHANGED,
+        actorId: adminId,
+        payload: {
+          petId: adoption.petId,
+          newAvailability: await this.petAvailabilityService.resolve(adoption.petId),
+          reason: 'adoption_rejected',
+          adoptionId,
+        } satisfies Prisma.InputJsonValue,
+      });
 
       // Best-effort: enqueue notification email
       if (this.notificationQueueService && adoption.adopter.email) {
