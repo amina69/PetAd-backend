@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CustodyService } from './custody.service';
+import { CustodyStateMachine } from './services/custody-state-machine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
@@ -48,6 +49,7 @@ describe('CustodyService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustodyService,
+        CustodyStateMachine,
         {
           provide: PrismaService,
           useValue: mockPrismaService,
@@ -723,6 +725,336 @@ describe('CustodyService', () => {
           depositAmount: 100,
         },
       });
+    });
+  });
+
+  describe('returnCustody', () => {
+    const custodyId = 'custody-123';
+
+    it('should throw NotFoundException when custody does not exist', async () => {
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await expect(service.returnCustody(custodyId)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.returnCustody(custodyId)).rejects.toThrow(
+        'Custody with id custody-123 not found',
+      );
+    });
+
+    it('should throw DomainException when custody status is not ACTIVE', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'RETURNED',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      // DomainException should be thrown from state machine validation
+      await expect(service.returnCustody(custodyId)).rejects.toThrow();
+    });
+
+    it('should successfully return custody when status is ACTIVE', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'RETURNED',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      const result = await service.returnCustody(custodyId);
+
+      expect(result.status).toBe('RETURNED');
+      expect(mockEventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'CUSTODY',
+          entityId: custodyId,
+          eventType: 'CUSTODY_RETURNED',
+          payload: expect.objectContaining({
+            fromStatus: 'ACTIVE',
+            toStatus: 'RETURNED',
+          }),
+        }),
+      );
+    });
+
+    it('should update trust score on successful custody return', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'RETURNED',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.returnCustody(custodyId);
+
+      expect(mockUsersService.updateTrustScore).toHaveBeenCalledWith(
+        'user-123',
+        5,
+      );
+    });
+
+    it('should log timeline event with transition details on custody return', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'RETURNED',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.returnCustody(custodyId);
+
+      expect(mockEventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'CUSTODY',
+          entityId: custodyId,
+          eventType: 'CUSTODY_RETURNED',
+          actorId: 'user-123',
+          payload: expect.objectContaining({
+            petId: 'pet-123',
+            holderId: 'user-123',
+            fromStatus: 'ACTIVE',
+            toStatus: 'RETURNED',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('violationCustody', () => {
+    const custodyId = 'custody-123';
+
+    it('should throw NotFoundException when custody does not exist', async () => {
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(null),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await expect(service.violationCustody(custodyId)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.violationCustody(custodyId)).rejects.toThrow(
+        'Custody with id custody-123 not found',
+      );
+    });
+
+    it('should throw DomainException when custody status is not ACTIVE', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'RETURNED',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      // DomainException should be thrown from state machine validation
+      await expect(service.violationCustody(custodyId)).rejects.toThrow();
+    });
+
+    it('should successfully mark custody as violation when status is ACTIVE', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'VIOLATION',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      const result = await service.violationCustody(custodyId);
+
+      expect(result.status).toBe('VIOLATION');
+      expect(mockEventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'CUSTODY',
+          entityId: custodyId,
+          eventType: 'CUSTODY_VIOLATION',
+          payload: expect.objectContaining({
+            fromStatus: 'ACTIVE',
+            toStatus: 'VIOLATION',
+          }),
+        }),
+      );
+    });
+
+    it('should update trust score with penalty on violation', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'VIOLATION',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.violationCustody(custodyId);
+
+      expect(mockUsersService.updateTrustScore).toHaveBeenCalledWith(
+        'user-123',
+        -15,
+      );
+    });
+
+    it('should log timeline event with transition details on custody violation', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'VIOLATION',
+      };
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.violationCustody(custodyId);
+
+      expect(mockEventsService.logEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entityType: 'CUSTODY',
+          entityId: custodyId,
+          eventType: 'CUSTODY_VIOLATION',
+          actorId: 'user-123',
+          payload: expect.objectContaining({
+            petId: 'pet-123',
+            holderId: 'user-123',
+            fromStatus: 'ACTIVE',
+            toStatus: 'VIOLATION',
+          }),
+        }),
+      );
     });
   });
 });
