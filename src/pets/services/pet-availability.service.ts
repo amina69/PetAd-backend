@@ -1,34 +1,44 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdoptionStatus, CustodyStatus } from '@prisma/client';
+import { PetStatus } from '../../common/enums';
 
 @Injectable()
 export class PetAvailabilityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getPetAvailability(petId: string): Promise<boolean> {
-    const blockingAdoption = await this.prisma.adoption.findFirst({
-      where: {
-        petId,
-        status: {
-          notIn: [AdoptionStatus.REJECTED, AdoptionStatus.CANCELLED],
-        },
-      },
-      select: { id: true },
-    });
+  async resolve(petId: string): Promise<PetStatus> {
+    const [latestAdoption, activeCustody] = await Promise.all([
+      this.prisma.adoption.findFirst({
+        where: { petId },
+        orderBy: { createdAt: 'desc' },
+        select: { status: true },
+      }),
+      this.prisma.custody.findFirst({
+        where: { petId, status: CustodyStatus.ACTIVE },
+        select: { status: true },
+      }),
+    ]);
 
-    if (blockingAdoption) return false;
+    if (latestAdoption?.status === AdoptionStatus.COMPLETED) {
+      return PetStatus.ADOPTED;
+    }
 
-    const activeCustody = await this.prisma.custody.findFirst({
-      where: {
-        petId,
-        status: CustodyStatus.ACTIVE,
-      },
-      select: { id: true },
-    });
+    if (activeCustody) {
+      return PetStatus.IN_CUSTODY;
+    }
 
-    if (activeCustody) return false;
+    const pendingStatuses: AdoptionStatus[] = [
+      AdoptionStatus.REQUESTED,
+      AdoptionStatus.PENDING,
+      AdoptionStatus.APPROVED,
+      AdoptionStatus.ESCROW_FUNDED,
+    ];
 
-    return true;
+    if (latestAdoption && pendingStatuses.includes(latestAdoption.status)) {
+      return PetStatus.PENDING;
+    }
+
+    return PetStatus.AVAILABLE;
   }
 }

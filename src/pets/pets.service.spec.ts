@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PetAvailabilityService } from './services/pet-availability.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreatePetDto } from './dto/create-pet.dto';
-import { PetSpecies } from '../common/enums';
+import { PetSpecies, PetStatus } from '../common/enums';
 
 const mockPrisma = {
   pet: {
@@ -18,7 +18,7 @@ const mockPrisma = {
 };
 
 const mockAvailabilityService = {
-  getPetAvailability: jest.fn(),
+  resolve: jest.fn(),
 };
 
 describe('PetsService', () => {
@@ -67,18 +67,17 @@ describe('PetsService', () => {
       {
         id: '1',
         name: 'Buddy',
-        adoptions: [],
-        custodies: [],
         currentOwner: null,
       },
     ];
 
     mockPrisma.pet.findMany.mockResolvedValue(mockPets);
     mockPrisma.pet.count.mockResolvedValue(1);
+    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
 
     const result = await service.findAll({});
 
-    expect(result.data[0].isAvailable).toBe(true);
+    expect(result.data[0].status).toBe(PetStatus.AVAILABLE);
     expect(result.meta.total).toBe(1);
   });
 

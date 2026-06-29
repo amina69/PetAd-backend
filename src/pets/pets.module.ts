@@ -8,6 +8,6 @@ import { PetAvailabilityService } from './services/pet-availability.service';
   imports: [PrismaModule],
   controllers: [PetsController],
   providers: [PetsService, PetAvailabilityService],
-  exports: [PetsService],
+  exports: [PetsService, PetAvailabilityService],
 })
 export class PetsModule {}

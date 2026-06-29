@@ -11,8 +11,8 @@ import {
   PaginatedResponseDto,
   PaginationMetaDto,
 } from '../common/dto/paginated-response.dto';
-import { Prisma, AdoptionStatus, CustodyStatus } from '@prisma/client';
-import { UserRole } from '../common/enums';
+import { Prisma } from '@prisma/client';
+import { PetStatus, UserRole } from '../common/enums';
 import { PetAvailabilityService } from './services/pet-availability.service';
 
 @Injectable()
@@ -32,10 +32,9 @@ export class PetsService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    const isAvailable =
-      await this.availabilityService.getPetAvailability(petId);
+    const status = await this.availabilityService.resolve(petId);
 
-    return { ...pet, isAvailable };
+    return { ...pet, status };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
@@ -94,30 +93,18 @@ export class PetsService {
         where,
         skip,
         take: limit,
-        include: {
-          currentOwner: true,
-          adoptions: {
-            where: {
-              status: {
-                notIn: [AdoptionStatus.REJECTED, AdoptionStatus.CANCELLED],
-              },
-            },
-          },
-          custodies: {
-            where: {
-              status: CustodyStatus.ACTIVE,
-            },
-          },
-        },
+        include: { currentOwner: true },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.pet.count({ where }),
     ]);
 
-    const data = pets.map((pet) => ({
-      ...pet,
-      isAvailable: pet.adoptions.length === 0 && pet.custodies.length === 0,
-    }));
+    const data = await Promise.all(
+      pets.map(async (pet) => ({
+        ...pet,
+        status: await this.availabilityService.resolve(pet.id),
+      })),
+    );
 
     const meta = new PaginationMetaDto(page, limit, total);
 
