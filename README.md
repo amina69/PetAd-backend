@@ -291,6 +291,10 @@ QUEUE_CONCURRENCY=5
 JOB_ATTEMPTS=3
 JOB_BACKOFF_DELAY=5000
 
+# BullMQ Dashboard
+# Visit http://localhost:${PORT}/admin/queues to monitor active, completed, and failed jobs.
+BULL_BOARD_PATH=/admin/queues
+
 # Monitoring (Optional)
 SENTRY_DSN=
 LOG_LEVEL=debug                   # debug | info | warn | error
