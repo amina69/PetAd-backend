@@ -28,6 +28,7 @@ import { Get, Query } from '@nestjs/common';
 import { ApiQuery, ApiResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FilterAdoptionsDto } from './dto/filter-adoptions.dto';
 import { CurrentUser as GetUser } from '../auth/decorators/current-user.decorator';
+import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 
 
 interface AuthRequest extends Request {
@@ -65,10 +66,41 @@ export class AdoptionController {
   @Patch(':id/approve')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Approve a pending adoption request (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Adoption approved successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Adoption not found' })
+  @ApiResponse({ status: 422, description: 'Invalid status transition' })
   approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'APPROVED',
-    });
+    return this.adoptionService.approveAdoption(
+      id,
+      (req.user.userId || req.user.sub) as string,
+    );
+  }
+
+  /**
+   * PATCH /adoption/:id/reject
+   * Admin-only. Rejects a pending adoption request.
+   * Updates adoption status to REJECTED and pet becomes available again.
+   */
+  @Patch(':id/reject')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Reject a pending adoption request (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Adoption rejected successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Adoption not found' })
+  @ApiResponse({ status: 422, description: 'Invalid status transition' })
+  rejectAdoption(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() dto: RejectAdoptionDto,
+  ) {
+    return this.adoptionService.rejectAdoption(
+      id,
+      (req.user.userId || req.user.sub) as string,
+      dto,
+    );
   }
 
   /**

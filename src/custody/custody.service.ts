@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { UsersService } from '../users/users.service';
+import { CustodyStateMachine } from './services/custody-state-machine.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 import { CustodyStatus } from '@prisma/client';
@@ -20,6 +21,7 @@ export class CustodyService {
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
     private readonly usersService: UsersService,
+    private readonly stateMachine: CustodyStateMachine,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -194,11 +196,11 @@ export class CustodyService {
         throw new NotFoundException(`Custody with id ${custodyId} not found`);
       }
 
-      if (custody.status !== CustodyStatus.ACTIVE) {
-        throw new BadRequestException(
-          `Custody must be ACTIVE to return (current status: ${custody.status})`,
-        );
-      }
+      // Validate state transition using state machine
+      this.stateMachine.assertCanTransition(
+        custody.status,
+        CustodyStatus.RETURNED,
+      );
 
       const updatedCustody = await tx.custody.update({
         where: { id: custodyId },
@@ -206,6 +208,7 @@ export class CustodyService {
         include: { holder: true, pet: true },
       });
 
+      // Log timeline event with transition details
       await this.eventsService.logEvent({
         entityType: 'CUSTODY',
         entityId: custodyId,
@@ -214,6 +217,9 @@ export class CustodyService {
         payload: {
           petId: custody.petId,
           holderId: custody.holderId,
+          fromStatus: custody.status,
+          toStatus: CustodyStatus.RETURNED,
+          timestamp: new Date().toISOString(),
         },
       });
 
@@ -221,6 +227,7 @@ export class CustodyService {
         await this.escrowService.releaseEscrow(custody.escrowId);
       }
 
+      // Update trust score on successful return
       await this.usersService.updateTrustScore(custody.holderId, 5);
 
       return updatedCustody as CustodyResponseDto;
@@ -238,11 +245,11 @@ export class CustodyService {
         throw new NotFoundException(`Custody with id ${custodyId} not found`);
       }
 
-      if (custody.status !== CustodyStatus.ACTIVE) {
-        throw new BadRequestException(
-          `Custody must be ACTIVE to mark as violation (current status: ${custody.status})`,
-        );
-      }
+      // Validate state transition using state machine
+      this.stateMachine.assertCanTransition(
+        custody.status,
+        CustodyStatus.VIOLATION,
+      );
 
       const updatedCustody = await tx.custody.update({
         where: { id: custodyId },
@@ -250,6 +257,7 @@ export class CustodyService {
         include: { holder: true, pet: true },
       });
 
+      // Log timeline event with transition details
       await this.eventsService.logEvent({
         entityType: 'CUSTODY',
         entityId: custodyId,
@@ -258,6 +266,9 @@ export class CustodyService {
         payload: {
           petId: custody.petId,
           holderId: custody.holderId,
+          fromStatus: custody.status,
+          toStatus: CustodyStatus.VIOLATION,
+          timestamp: new Date().toISOString(),
         },
       });
 
@@ -265,7 +276,56 @@ export class CustodyService {
         await this.escrowService.refundEscrow(custody.escrowId);
       }
 
+      // Update trust score on VIOLATION - significant penalty
       await this.usersService.updateTrustScore(custody.holderId, -15);
+
+      return updatedCustody as CustodyResponseDto;
+    });
+  }
+
+  async cancelCustody(custodyId: string, reason?: string): Promise<CustodyResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const custody = await tx.custody.findUnique({
+        where: { id: custodyId },
+        include: { holder: true, pet: true },
+      });
+
+      if (!custody) {
+        throw new NotFoundException(`Custody with id ${custodyId} not found`);
+      }
+
+      // Validate state transition using state machine
+      this.stateMachine.assertCanTransition(
+        custody.status,
+        CustodyStatus.CANCELLED,
+      );
+
+      const updatedCustody = await tx.custody.update({
+        where: { id: custodyId },
+        data: { status: CustodyStatus.CANCELLED },
+        include: { holder: true, pet: true },
+      });
+
+      // Log timeline event with transition details
+      await this.eventsService.logEvent({
+        entityType: 'CUSTODY',
+        entityId: custodyId,
+        eventType: 'CUSTODY_CANCELLED',
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          holderId: custody.holderId,
+          fromStatus: custody.status,
+          toStatus: CustodyStatus.CANCELLED,
+          reason: reason ?? null,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // Refund escrow on cancellation
+      if (custody.escrowId) {
+        await this.escrowService.refundEscrow(custody.escrowId);
+      }
 
       return updatedCustody as CustodyResponseDto;
     });
