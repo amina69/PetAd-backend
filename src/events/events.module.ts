@@ -9,3 +9,7 @@ import { PrismaModule } from '../prisma/prisma.module';
   exports: [EventsService], // Export it so other modules can use it
 })
 export class EventsModule {}
+
+export { custodyReducer } from './reducers/custody.reducer';
+export { petAvailabilityReducer } from './reducers/pet-availability.reducer';
+export type { CreateEventLogDto } from './events.service';
