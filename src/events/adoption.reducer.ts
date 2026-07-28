@@ -8,6 +8,7 @@ export interface ReplayedAdoptionState {
   escrowAccountId?: string;
   escrowTxHash?: string;
   completedAt?: string;
+  newOwnerId?: string;
 }
 
 export interface AdoptionReplayEvent {
@@ -56,11 +57,6 @@ function getEventTimestamp(event: AdoptionReplayEvent): string | undefined {
   return undefined;
 }
 
-/**
- * Rebuilds adoption state by applying adoption events in event-log order.
- * Unknown events are deliberately ignored so unrelated events can safely be
- * replayed against an adoption aggregate.
- */
 export function adoptionReducer(
   state: ReplayedAdoptionState,
   event: AdoptionReplayEvent,
@@ -123,6 +119,12 @@ export function adoptionReducer(
           getString(payload, 'completedAt', 'timestamp') ??
           getEventTimestamp(event) ??
           state.completedAt,
+        escrowTxHash:
+          getString(payload, 'escrowTxHash', 'escrowTransactionHash', 'txHash') ??
+          event.txHash ??
+          state.escrowTxHash,
+        newOwnerId:
+          getString(payload, 'newOwnerId', 'adopterId') ?? state.newOwnerId,
       };
 
     default:
