@@ -85,7 +85,7 @@ export class CustodyService {
 
     // Validate startDate is not in the past
     const now = new Date();
-    now.setHours(0, 0, 0, 0); // Set to start of day for comparison
+    now.setHours(0, 0, 0, 0);
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
 
@@ -106,11 +106,9 @@ export class CustodyService {
     endDate.setDate(endDate.getDate() + durationDays);
 
     // Create custody record with transaction
-    // If depositAmount is provided, also create escrow
     const custody = await this.prisma.$transaction(async (tx) => {
       let escrowId: string | null = null;
 
-      // Create escrow if deposit amount is provided
       if (depositAmount !== undefined && depositAmount !== null) {
         const escrow = await this.escrowService.createEscrow(
           depositAmount,
@@ -119,7 +117,6 @@ export class CustodyService {
         escrowId = escrow.id;
       }
 
-      // Create custody record
       const custodyRecord = await tx.custody.create({
         data: {
           status: CustodyStatus.PENDING,
@@ -139,7 +136,6 @@ export class CustodyService {
       return custodyRecord;
     });
 
-    // Log custody creation event
     await this.eventsService.logEvent({
       entityType: 'CUSTODY',
       entityId: custody.id,
@@ -174,7 +170,6 @@ export class CustodyService {
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : String(error);
-        // Intentionally using Nest logger semantics; don't fail request due to async email.
         // eslint-disable-next-line no-console
         console.error(
           `Failed to enqueue custody notification email | custodyId=${custody.id} | reason=${reason}`,
@@ -186,6 +181,10 @@ export class CustodyService {
   }
 
   async returnCustody(custodyId: string): Promise<CustodyResponseDto> {
+    return this.complete(custodyId);
+  }
+
+  async complete(custodyId: string): Promise<CustodyResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
         where: { id: custodyId },
@@ -196,7 +195,6 @@ export class CustodyService {
         throw new NotFoundException(`Custody with id ${custodyId} not found`);
       }
 
-      // Validate state transition using state machine
       this.stateMachine.assertCanTransition(
         custody.status,
         CustodyStatus.RETURNED,
@@ -208,7 +206,27 @@ export class CustodyService {
         include: { holder: true, pet: true },
       });
 
-      // Log timeline event with transition details
+      const completedAt = new Date().toISOString();
+      let depositReturnTxHash: string | null = null;
+
+      if (custody.escrowId) {
+        const releaseResult = await this.escrowService.releaseEscrow(
+          custody.escrowId,
+        );
+        const release = releaseResult as
+          | string
+          | { transactionHash?: string; txHash?: string; hash?: string }
+          | null
+          | undefined;
+
+        if (typeof release === 'string') {
+          depositReturnTxHash = release;
+        } else {
+          depositReturnTxHash =
+            release?.transactionHash ?? release?.txHash ?? release?.hash ?? null;
+        }
+      }
+
       await this.eventsService.logEvent({
         entityType: 'CUSTODY',
         entityId: custodyId,
@@ -219,15 +237,38 @@ export class CustodyService {
           holderId: custody.holderId,
           fromStatus: custody.status,
           toStatus: CustodyStatus.RETURNED,
-          timestamp: new Date().toISOString(),
+          timestamp: completedAt,
         },
       });
 
-      if (custody.escrowId) {
-        await this.escrowService.releaseEscrow(custody.escrowId);
-      }
+      await this.eventsService.logEvent({
+        entityType: 'CUSTODY',
+        entityId: custodyId,
+        eventType: 'CUSTODY_COMPLETED',
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          custodianId: custody.holderId,
+          ownerId: custody.pet.ownerId,
+          completedAt,
+          depositReturnTxHash,
+        },
+      });
 
-      // Update trust score on successful return
+      await this.eventsService.logEvent({
+        entityType: 'PET',
+        entityId: custody.petId,
+        eventType: 'PET_RETURNED',
+        actorId: custody.holderId,
+        payload: {
+          petId: custody.petId,
+          custodianId: custody.holderId,
+          ownerId: custody.pet.ownerId,
+          completedAt,
+          depositReturnTxHash,
+        },
+      });
+
       await this.usersService.updateTrustScore(custody.holderId, 5);
 
       return updatedCustody as CustodyResponseDto;
@@ -245,7 +286,6 @@ export class CustodyService {
         throw new NotFoundException(`Custody with id ${custodyId} not found`);
       }
 
-      // Validate state transition using state machine
       this.stateMachine.assertCanTransition(
         custody.status,
         CustodyStatus.VIOLATION,
@@ -257,7 +297,6 @@ export class CustodyService {
         include: { holder: true, pet: true },
       });
 
-      // Log timeline event with transition details
       await this.eventsService.logEvent({
         entityType: 'CUSTODY',
         entityId: custodyId,
@@ -276,14 +315,16 @@ export class CustodyService {
         await this.escrowService.refundEscrow(custody.escrowId);
       }
 
-      // Update trust score on VIOLATION - significant penalty
       await this.usersService.updateTrustScore(custody.holderId, -15);
 
       return updatedCustody as CustodyResponseDto;
     });
   }
 
-  async cancelCustody(custodyId: string, reason?: string): Promise<CustodyResponseDto> {
+  async cancelCustody(
+    custodyId: string,
+    reason?: string,
+  ): Promise<CustodyResponseDto> {
     return this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
         where: { id: custodyId },
@@ -294,7 +335,6 @@ export class CustodyService {
         throw new NotFoundException(`Custody with id ${custodyId} not found`);
       }
 
-      // Validate state transition using state machine
       this.stateMachine.assertCanTransition(
         custody.status,
         CustodyStatus.CANCELLED,
@@ -306,7 +346,6 @@ export class CustodyService {
         include: { holder: true, pet: true },
       });
 
-      // Log timeline event with transition details
       await this.eventsService.logEvent({
         entityType: 'CUSTODY',
         entityId: custodyId,
@@ -322,7 +361,6 @@ export class CustodyService {
         },
       });
 
-      // Refund escrow on cancellation
       if (custody.escrowId) {
         await this.escrowService.refundEscrow(custody.escrowId);
       }
