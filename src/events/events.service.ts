@@ -13,6 +13,15 @@ export interface CreateEventLogDto {
   metadata?: Prisma.InputJsonValue;
 }
 
+export interface AppendEventDto {
+  aggregateType: EventEntityType | string;
+  aggregateId: string;
+  eventType: EventType | string;
+  payload: Prisma.InputJsonValue;
+  actorId?: string;
+  metadata?: Prisma.InputJsonValue;
+}
+
 export interface EventLedger {
   entityType: EventEntityType | string;
   entityId: string;
@@ -79,6 +88,7 @@ export function custodyReducer(
 ): AggregateState {
   return reduceLifecycleState(state, event, {
     CUSTODY_REQUESTED: 'PENDING',
+    CUSTODY_CREATED: 'PENDING',
     CUSTODY_APPROVED: 'APPROVED',
     CUSTODY_STARTED: 'ACTIVE',
     CUSTODY_COMPLETED: 'COMPLETED',
@@ -115,6 +125,17 @@ export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async appendEvent(dto: AppendEventDto) {
+    return this.logEvent({
+      entityType: dto.aggregateType as EventEntityType,
+      entityId: dto.aggregateId,
+      eventType: dto.eventType as EventType,
+      actorId: dto.actorId,
+      payload: dto.payload,
+      metadata: dto.metadata,
+    });
+  }
 
   /**
    * Logs a system or user-generated event to the database.
