@@ -16,6 +16,7 @@ const VALID_TRANSITIONS: Record<CustodyStatus, CustodyStatus[]> = {
   [CustodyStatus.CANCELLED]: [],
   [CustodyStatus.VIOLATION]: [],
   [CustodyStatus.PENDING]: [CustodyStatus.ACTIVE, CustodyStatus.CANCELLED],
+  [CustodyStatus.COMPLETED]: [],
 };
 
 @Injectable()

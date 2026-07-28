@@ -13,7 +13,9 @@ import {
 } from '../common/dto/paginated-response.dto';
 import { Prisma, AdoptionStatus, CustodyStatus } from '@prisma/client';
 import { UserRole } from '../common/enums';
+import { PetStatus } from '../common/enums/pet-status.enum';
 import { PetAvailabilityService } from './services/pet-availability.service';
+import { petAvailabilityReducer } from '../events/reducers/pet-availability.reducer';
 
 @Injectable()
 export class PetsService {
@@ -160,5 +162,63 @@ export class PetsService {
 
     await this.prisma.pet.delete({ where: { id } });
     return { message: 'Pet deleted successfully' };
+  }
+
+  /**
+   * Verifies a pet's availability by replaying its event log and comparing
+   * the replayed status against the current DB-computed availability.
+   * Returns a discrepancy report if they differ.
+   */
+  async verifyAvailability(petId: string) {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+    });
+
+    if (!pet) {
+      throw new NotFoundException(`Pet with ID ${petId} not found`);
+    }
+
+    // Get all events for this pet
+    const events = await this.prisma.eventLog.findMany({
+      where: {
+        entityId: petId,
+        entityType: 'PET',
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        eventType: true,
+        createdAt: true,
+      },
+    });
+
+    // Replay events to compute availability
+    const replayedStatus = petAvailabilityReducer(events);
+
+    // Get current DB-based availability
+    const dbAvailable = await this.availabilityService.getPetAvailability(petId);
+
+    // Check if there's a discrepancy
+    // AVAILABLE in replay -> pet should be available in DB
+    // PENDING means "still available until approved" -> matches dbAvailable=true
+    // ADOPTED in replay means permanently not available -> matches dbAvailable=false
+    // IN_CUSTODY means temporarily unavailable -> matches dbAvailable=false
+    const isMatch =
+      (replayedStatus === PetStatus.AVAILABLE && dbAvailable) ||
+      (replayedStatus === PetStatus.PENDING && dbAvailable) ||
+      (replayedStatus === PetStatus.ADOPTED && !dbAvailable) ||
+      (replayedStatus === PetStatus.IN_CUSTODY && !dbAvailable);
+
+    return {
+      petId,
+      replayedStatus,
+      dbAvailable,
+      isMatch,
+      eventCount: events.length,
+      ...(isMatch
+        ? { message: 'Pet availability is correctly synchronized' }
+        : {
+            discrepancy: `Event replay indicates '${replayedStatus}' but DB reports '${dbAvailable ? 'AVAILABLE' : 'NOT_AVAILABLE'}'`,
+          }),
+    };
   }
 }
