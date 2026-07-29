@@ -81,6 +81,40 @@ export class CustodyController {
     return this.custodyService.createCustody(user.userId, createCustodyDto);
   }
 
+  @Post(':id/start')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Start a custody agreement',
+    description:
+      'Confirm receipt of the pet and activate the custody agreement. Only the custodian or an administrator may start custody.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Custody successfully started',
+    type: CustodyResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden - Only the custodian or an administrator may start custody',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Not Found - Custody does not exist',
+  })
+  async startCustody(
+    @Param('id') custodyId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<CustodyResponseDto> {
+    return this.custodyService.startCustody(
+      custodyId,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Post(':id/return')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
@@ -103,7 +137,9 @@ export class CustodyController {
     status: 404,
     description: 'Not Found - Custody does not exist',
   })
-  async returnCustody(@Param('id') custodyId: string): Promise<CustodyResponseDto> {
+  async returnCustody(
+    @Param('id') custodyId: string,
+  ): Promise<CustodyResponseDto> {
     return this.custodyService.returnCustody(custodyId);
   }
 
@@ -129,7 +165,9 @@ export class CustodyController {
     status: 404,
     description: 'Not Found - Custody does not exist',
   })
-  async violationCustody(@Param('id') custodyId: string): Promise<CustodyResponseDto> {
+  async violationCustody(
+    @Param('id') custodyId: string,
+  ): Promise<CustodyResponseDto> {
     return this.custodyService.violationCustody(custodyId);
   }
 }
