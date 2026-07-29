@@ -10,10 +10,19 @@ export interface MovementTimelineEvent {
   anchorStatus: string;
 }
 
+export interface MovementHistoryOptions {
+  page?: number;
+  limit?: number;
+  sort?: 'asc' | 'desc';
+}
+
 export interface PetMovementHistory {
   petId: string;
   petName: string;
   timeline: MovementTimelineEvent[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 /**
@@ -36,10 +45,18 @@ export class PetMovementService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Returns the complete movement history of a pet — every adoption and custody
-   * event in chronological order.
+   * Returns the paginated and sorted movement history of a pet.
+   *
+   * @param petId - The pet's unique ID
+   * @param options - Pagination & sorting options (page, limit, sort)
+   * @returns Paginated movement history with timeline and metadata
    */
-  async getMovementHistory(petId: string): Promise<PetMovementHistory> {
+  async getMovementHistory(
+    petId: string,
+    options: MovementHistoryOptions = {},
+  ): Promise<PetMovementHistory> {
+    const { page = 1, limit = 20, sort = 'asc' } = options;
+
     // Verify the pet exists
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
@@ -50,23 +67,35 @@ export class PetMovementService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    // Query event_logs where:
-    //   - entityType = PET and entityId = petId (for PET-scoped events like PET_CUSTODY_CANCELLED)
-    //   - OR payload contains the petId (for adoption/custody events)
-    const events = await this.prisma.eventLog.findMany({
-      where: {
-        OR: [
-          { entityType: 'PET', entityId: petId },
-          {
-            payload: {
-              path: ['petId'],
-              string_contains: petId,
-            } as Prisma.JsonFilter,
-          },
-        ],
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const orderBy: { createdAt: 'asc' | 'desc' } = {
+      createdAt: sort,
+    };
+
+    const whereClause = {
+      OR: [
+        { entityType: 'PET' as const, entityId: petId },
+        {
+          payload: {
+            path: ['petId'],
+            string_contains: petId,
+          } as Prisma.JsonFilter,
+        },
+      ],
+    };
+
+    // Fetch total count and paginated events in parallel
+    const skip = (page - 1) * limit;
+    const [total, events] = await Promise.all([
+      this.prisma.eventLog.count({
+        where: whereClause,
+      }),
+      this.prisma.eventLog.findMany({
+        where: whereClause,
+        orderBy,
+        skip,
+        take: limit,
+      }),
+    ]);
 
     const timeline: MovementTimelineEvent[] = events.map((event) => ({
       eventType: event.eventType,
@@ -80,6 +109,9 @@ export class PetMovementService {
       petId: pet.id,
       petName: pet.name,
       timeline,
+      total,
+      page,
+      limit,
     };
   }
 

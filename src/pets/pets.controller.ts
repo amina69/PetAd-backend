@@ -28,6 +28,7 @@ import { PetMovementService } from './services/pet-movement.service';
 import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
 import { SearchPetsDto } from './dto/search-pets.dto';
+import { MovementHistoryQueryDto } from './dto/movement-history-query.dto';
 import { UserRole } from '../common/enums';
 import { SkipThrottle } from '@nestjs/throttler';
 
@@ -125,9 +126,11 @@ export class PetsController {
 
   @Get(':id/history')
   @ApiOperation({
-    summary: 'Get pet movement timeline',
+    summary: 'Get pet movement timeline (paginated & sortable)',
     description:
-      'Returns the complete movement history of a pet — every adoption and custody event in chronological order. Public endpoint (no auth required).',
+      'Returns the paginated movement history of a pet — every adoption and custody event. ' +
+      'Supports pagination via ?page=&limit= and sorting via ?sort=asc|desc. ' +
+      'Default sort: occurredAt ASC (oldest first). Public endpoint (no auth required).',
   })
   @ApiParam({
     name: 'id',
@@ -135,7 +138,7 @@ export class PetsController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Pet movement history',
+    description: 'Paginated pet movement history',
     schema: {
       example: {
         petId: '550e8400-e29b-41d4-a716-446655440000',
@@ -149,12 +152,18 @@ export class PetsController {
             anchorStatus: 'ANCHORED',
           },
         ],
+        total: 25,
+        page: 1,
+        limit: 20,
       },
     },
   })
   @ApiResponse({ status: 404, description: 'Pet not found' })
-  async getMovementHistory(@Param('id') petId: string) {
-    return this.petMovementService.getMovementHistory(petId);
+  async getMovementHistory(
+    @Param('id') petId: string,
+    @Query() query: MovementHistoryQueryDto,
+  ) {
+    return this.petMovementService.getMovementHistory(petId, query);
   }
 
   @Patch(':id')
