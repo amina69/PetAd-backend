@@ -137,9 +137,6 @@ export class EventsService {
     });
   }
 
-  /**
-   * Logs a system or user-generated event to the database.
-   */
   async logEvent(dto: CreateEventLogDto) {
     try {
       const event = await this.prisma.eventLog.create({
