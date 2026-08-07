@@ -26,6 +26,8 @@
     "seed": "npx prisma db seed"
   },
   "dependencies": {
+    "@bull-board/api": "^8.0.1",
+    "@bull-board/express": "^8.0.1",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/bullmq": "^11.0.4",
