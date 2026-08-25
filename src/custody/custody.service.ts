@@ -59,7 +59,7 @@ export class CustodyService {
   ): Promise<CustodyResponseDto> {
     const { petId, startDate, durationDays, depositAmount } = dto;
 
-    const previousStatus = await this.availability.resolve(petId);
+    const previousStatus = await this.availability.getPetStatus(petId);
 
     // Validate pet exists
     const pet = await this.prisma.pet.findUnique({
@@ -231,7 +231,7 @@ export class CustodyService {
       throw new NotFoundException(`Custody with id ${custodyId} not found`);
     }
 
-    const previousStatus = await this.availability.resolve(existing.petId);
+    const previousStatus = await this.availability.getPetStatus(existing.petId);
 
     const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
@@ -300,7 +300,7 @@ export class CustodyService {
       throw new NotFoundException(`Custody with id ${custodyId} not found`);
     }
 
-    const previousStatus = await this.availability.resolve(existing.petId);
+    const previousStatus = await this.availability.getPetStatus(existing.petId);
 
     const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
@@ -373,7 +373,7 @@ export class CustodyService {
       throw new NotFoundException(`Custody with id ${custodyId} not found`);
     }
 
-    const previousStatus = await this.availability.resolve(existing.petId);
+    const previousStatus = await this.availability.getPetStatus(existing.petId);
 
     const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({

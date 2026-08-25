@@ -67,7 +67,7 @@ export class AdoptionService {
    * Throws ConflictException if the pet has no owner or already has an active adoption.
    */
   async requestAdoption(adopterId: string, dto: CreateAdoptionDto) {
-    const previousStatus = await this.availability.resolve(dto.petId);
+    const previousStatus = await this.availability.getPetStatus(dto.petId);
 
     const adoption = await this.prisma.$transaction(async (tx) => {
       const pet = await tx.pet.findUnique({ where: { id: dto.petId } });
@@ -159,7 +159,7 @@ export class AdoptionService {
     // Enforce state machine before updating
     this.adoptionStateMachine.assertValidTransition(existing.status, dto.status);
 
-    const previousStatus = await this.availability.resolve(existing.petId);
+    const previousStatus = await this.availability.getPetStatus(existing.petId);
 
     const updated = await this.prisma.adoption.update({
       where: { id: adoptionId },
@@ -257,7 +257,7 @@ export class AdoptionService {
         AdoptionStatus.APPROVED,
       );
 
-      previousStatus = await this.availability.resolve(adoption.petId);
+      previousStatus = await this.availability.getPetStatus(adoption.petId);
 
       // Update adoption status to APPROVED
       const updated = await tx.adoption.update({
@@ -378,7 +378,7 @@ export class AdoptionService {
         AdoptionStatus.REJECTED,
       );
 
-      previousStatus = await this.availability.resolve(adoption.petId);
+      previousStatus = await this.availability.getPetStatus(adoption.petId);
 
       // Prepare notes with rejection reason
       const rejectionNotes = dto.reason

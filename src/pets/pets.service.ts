@@ -37,7 +37,7 @@ export class PetsService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    const status = await this.availabilityService.resolve(petId);
+    const status = await this.availabilityService.getPetStatus(petId);
 
     return { ...pet, isAvailable: status === PetStatus.AVAILABLE, status };
   }

@@ -20,7 +20,7 @@ const mockPrisma = {
 
 const mockAvailabilityService = {
   getPetAvailability: jest.fn(),
-  resolve: jest.fn(),
+  getPetStatus: jest.fn(),
 };
 
 describe('PetsService', () => {
@@ -281,7 +281,7 @@ describe('PetsService', () => {
     };
 
     mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.PENDING);
+    mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.PENDING);
 
     const result = await service.getPetById('pet-1');
 
@@ -298,7 +298,7 @@ describe('PetsService', () => {
     };
 
     mockPrisma.pet.findUnique.mockResolvedValue(mockPet);
-    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+    mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.AVAILABLE);
 
     const result = await service.getPetById('pet-1');
 

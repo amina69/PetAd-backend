@@ -48,7 +48,7 @@ describe('CustodyService', () => {
   };
 
   const mockAvailabilityService = {
-    resolve: jest.fn(),
+    getPetStatus: jest.fn(),
     detectAndLogStatusChange: jest.fn(),
   };
 
@@ -58,7 +58,7 @@ describe('CustodyService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+    mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.AVAILABLE);
     mockAvailabilityService.detectAndLogStatusChange.mockResolvedValue(
       undefined,
     );
@@ -896,7 +896,7 @@ describe('CustodyService', () => {
         id: custodyId,
         petId: 'pet-123',
       });
-      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+      mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.IN_CUSTODY);
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -1068,7 +1068,7 @@ describe('CustodyService', () => {
         id: custodyId,
         petId: 'pet-123',
       });
-      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+      mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.IN_CUSTODY);
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -1124,7 +1124,7 @@ describe('CustodyService', () => {
         id: custodyId,
         petId: 'pet-123',
       });
-      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+      mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.IN_CUSTODY);
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -1175,7 +1175,7 @@ describe('CustodyService', () => {
         id: custodyId,
         petId: 'pet-123',
       });
-      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+      mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.AVAILABLE);
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -1241,7 +1241,7 @@ describe('CustodyService', () => {
 
       await service.createCustody('user-123', dto);
 
-      expect(mockAvailabilityService.resolve).toHaveBeenCalledWith('pet-123');
+      expect(mockAvailabilityService.getPetStatus).toHaveBeenCalledWith('pet-123');
     });
   });
 });

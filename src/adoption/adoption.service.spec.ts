@@ -59,7 +59,7 @@ describe('AdoptionService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+    mockAvailabilityService.getPetStatus.mockResolvedValue(PetStatus.AVAILABLE);
     mockAvailabilityService.detectAndLogStatusChange.mockResolvedValue(
       undefined,
     );
