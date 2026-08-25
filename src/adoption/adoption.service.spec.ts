@@ -6,6 +6,8 @@ import { EventsService } from '../events/events.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
 import { EventType, EventEntityType, AdoptionStatus } from '@prisma/client';
 import { DomainException } from '../common/exceptions/domain.exception';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 const ADOPTER_ID = 'adopter-uuid';
 const PET_ID = 'pet-uuid';
@@ -50,8 +52,17 @@ describe('AdoptionService', () => {
     canTransition: jest.fn(),
   };
 
+  const mockAvailabilityService = {
+    resolve: jest.fn().mockResolvedValue(PetStatus.AVAILABLE),
+    detectAndLogStatusChange: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+    mockAvailabilityService.detectAndLogStatusChange.mockResolvedValue(
+      undefined,
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -59,6 +70,10 @@ describe('AdoptionService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventsService, useValue: mockEvents },
         { provide: AdoptionStateMachine, useValue: mockStateMachine },
+        {
+          provide: PetAvailabilityService,
+          useValue: mockAvailabilityService,
+        },
       ],
     }).compile();
 

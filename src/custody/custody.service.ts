@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   Optional,
@@ -13,24 +14,52 @@ import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 import { CustodyStatus } from '@prisma/client';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 @Injectable()
 export class CustodyService {
+  private readonly logger = new Logger(CustodyService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
     private readonly escrowService: EscrowService,
     private readonly usersService: UsersService,
     private readonly stateMachine: CustodyStateMachine,
+    private readonly availability: PetAvailabilityService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
+
+  /**
+   * Fires PET_AVAILABILITY_CHANGED when the pet's resolved status differs from
+   * the status captured before the mutation. No-op when no prior status was
+   * captured.
+   */
+  private async logAvailabilityChange(
+    petId: string,
+    previousStatus: PetStatus | undefined,
+    actorId: string,
+    reason: string,
+  ): Promise<void> {
+    if (!previousStatus) return;
+
+    await this.availability.detectAndLogStatusChange({
+      petId,
+      previousStatus,
+      actorId,
+      reason,
+    });
+  }
 
   async createCustody(
     userId: string,
     dto: CreateCustodyDto,
   ): Promise<CustodyResponseDto> {
     const { petId, startDate, durationDays, depositAmount } = dto;
+
+    const previousStatus = await this.availability.resolve(petId);
 
     // Validate pet exists
     const pet = await this.prisma.pet.findUnique({
@@ -182,11 +211,29 @@ export class CustodyService {
       }
     }
 
+    await this.logAvailabilityChange(
+      custody.petId,
+      previousStatus,
+      userId,
+      'CUSTODY_CREATED',
+    );
+
     return custody as CustodyResponseDto;
   }
 
   async returnCustody(custodyId: string): Promise<CustodyResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
+    const existing = await this.prisma.custody.findUnique({
+      where: { id: custodyId },
+      select: { petId: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Custody with id ${custodyId} not found`);
+    }
+
+    const previousStatus = await this.availability.resolve(existing.petId);
+
+    const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
         where: { id: custodyId },
         include: { holder: true, pet: true },
@@ -202,7 +249,7 @@ export class CustodyService {
         CustodyStatus.RETURNED,
       );
 
-      const updatedCustody = await tx.custody.update({
+      const updated = await tx.custody.update({
         where: { id: custodyId },
         data: { status: CustodyStatus.RETURNED },
         include: { holder: true, pet: true },
@@ -230,12 +277,32 @@ export class CustodyService {
       // Update trust score on successful return
       await this.usersService.updateTrustScore(custody.holderId, 5);
 
-      return updatedCustody as CustodyResponseDto;
+      return updated as CustodyResponseDto;
     });
+
+    await this.logAvailabilityChange(
+      existing.petId,
+      previousStatus,
+      updatedCustody.holderId,
+      'CUSTODY_RETURNED',
+    );
+
+    return updatedCustody;
   }
 
   async violationCustody(custodyId: string): Promise<CustodyResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
+    const existing = await this.prisma.custody.findUnique({
+      where: { id: custodyId },
+      select: { petId: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Custody with id ${custodyId} not found`);
+    }
+
+    const previousStatus = await this.availability.resolve(existing.petId);
+
+    const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
         where: { id: custodyId },
         include: { holder: true, pet: true },
@@ -251,7 +318,7 @@ export class CustodyService {
         CustodyStatus.VIOLATION,
       );
 
-      const updatedCustody = await tx.custody.update({
+      const updated = await tx.custody.update({
         where: { id: custodyId },
         data: { status: CustodyStatus.VIOLATION },
         include: { holder: true, pet: true },
@@ -279,8 +346,17 @@ export class CustodyService {
       // Update trust score on VIOLATION - significant penalty
       await this.usersService.updateTrustScore(custody.holderId, -15);
 
-      return updatedCustody as CustodyResponseDto;
+      return updated as CustodyResponseDto;
     });
+
+    await this.logAvailabilityChange(
+      existing.petId,
+      previousStatus,
+      updatedCustody.holderId,
+      'CUSTODY_VIOLATION',
+    );
+
+    return updatedCustody;
   }
 
   async cancelCustody(
@@ -288,7 +364,18 @@ export class CustodyService {
     reason?: string,
     depositHandling?: 'RETURNED' | 'FORFEITED' | 'PARTIAL',
   ): Promise<CustodyResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
+    const existing = await this.prisma.custody.findUnique({
+      where: { id: custodyId },
+      select: { petId: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Custody with id ${custodyId} not found`);
+    }
+
+    const previousStatus = await this.availability.resolve(existing.petId);
+
+    const updatedCustody = await this.prisma.$transaction(async (tx) => {
       const custody = await tx.custody.findUnique({
         where: { id: custodyId },
         include: { holder: true, pet: true },
@@ -304,7 +391,7 @@ export class CustodyService {
         CustodyStatus.CANCELLED,
       );
 
-      const updatedCustody = await tx.custody.update({
+      const updated = await tx.custody.update({
         where: { id: custodyId },
         data: { status: CustodyStatus.CANCELLED },
         include: { holder: true, pet: true },
@@ -350,7 +437,16 @@ export class CustodyService {
         await this.escrowService.refundEscrow(custody.escrowId);
       }
 
-      return updatedCustody as CustodyResponseDto;
+      return updated as CustodyResponseDto;
     });
+
+    await this.logAvailabilityChange(
+      existing.petId,
+      previousStatus,
+      updatedCustody.holderId,
+      'CUSTODY_CANCELLED',
+    );
+
+    return updatedCustody;
   }
 }

@@ -7,6 +7,8 @@ import { EventsService } from '../events/events.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { UsersService } from '../users/users.service';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 import { CreateCustodyDto } from './dto/create-custody.dto';
 
 describe('CustodyService', () => {
@@ -21,10 +23,14 @@ describe('CustodyService', () => {
     },
     custody: {
       create: jest.fn(),
+      findUnique: jest.fn(),
       findFirst: jest.fn(),
     },
     adoption: {
       findFirst: jest.fn(),
+    },
+    user: {
+      findUnique: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -41,11 +47,22 @@ describe('CustodyService', () => {
     updateTrustScore: jest.fn(),
   };
 
+  const mockAvailabilityService = {
+    resolve: jest.fn(),
+    detectAndLogStatusChange: jest.fn(),
+  };
+
   const mockNotificationQueueService = {
     addJob: jest.fn(),
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
+    mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+    mockAvailabilityService.detectAndLogStatusChange.mockResolvedValue(
+      undefined,
+    );
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustodyService,
@@ -65,6 +82,10 @@ describe('CustodyService', () => {
         {
           provide: UsersService,
           useValue: mockUsersService,
+        },
+        {
+          provide: PetAvailabilityService,
+          useValue: mockAvailabilityService,
         },
         {
           provide: NotificationQueueService,
@@ -731,15 +752,8 @@ describe('CustodyService', () => {
   describe('returnCustody', () => {
     const custodyId = 'custody-123';
 
-    it('should throw NotFoundException when custody does not exist', async () => {
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            findUnique: jest.fn().mockResolvedValue(null),
-          },
-        };
-        return callback(mockTx);
-      });
+    it('should throw NotFoundException when custody does not exist (pre-lookup)', async () => {
+      mockPrismaService.custody.findUnique.mockResolvedValue(null);
 
       await expect(service.returnCustody(custodyId)).rejects.toThrow(
         NotFoundException,
@@ -759,6 +773,11 @@ describe('CustodyService', () => {
         pet: { id: 'pet-123', name: 'Buddy' },
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -768,7 +787,6 @@ describe('CustodyService', () => {
         return callback(mockTx);
       });
 
-      // DomainException should be thrown from state machine validation
       await expect(service.returnCustody(custodyId)).rejects.toThrow();
     });
 
@@ -787,6 +805,11 @@ describe('CustodyService', () => {
         ...mockCustody,
         status: 'RETURNED',
       };
+
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -830,6 +853,11 @@ describe('CustodyService', () => {
         status: 'RETURNED',
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -848,7 +876,7 @@ describe('CustodyService', () => {
       );
     });
 
-    it('should log timeline event with transition details on custody return', async () => {
+    it('should log availability change when status changes on return', async () => {
       const mockCustody = {
         id: custodyId,
         status: 'ACTIVE',
@@ -864,6 +892,12 @@ describe('CustodyService', () => {
         status: 'RETURNED',
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -876,35 +910,22 @@ describe('CustodyService', () => {
 
       await service.returnCustody(custodyId);
 
-      expect(mockEventsService.logEvent).toHaveBeenCalledWith(
-        expect.objectContaining({
-          entityType: 'CUSTODY',
-          entityId: custodyId,
-          eventType: 'CUSTODY_RETURNED',
-          actorId: 'user-123',
-          payload: expect.objectContaining({
-            petId: 'pet-123',
-            holderId: 'user-123',
-            fromStatus: 'ACTIVE',
-            toStatus: 'RETURNED',
-          }),
-        }),
-      );
+      expect(
+        mockAvailabilityService.detectAndLogStatusChange,
+      ).toHaveBeenCalledWith({
+        petId: 'pet-123',
+        previousStatus: PetStatus.IN_CUSTODY,
+        actorId: 'user-123',
+        reason: 'CUSTODY_RETURNED',
+      });
     });
   });
 
   describe('violationCustody', () => {
     const custodyId = 'custody-123';
 
-    it('should throw NotFoundException when custody does not exist', async () => {
-      mockPrismaService.$transaction.mockImplementation(async (callback) => {
-        const mockTx = {
-          custody: {
-            findUnique: jest.fn().mockResolvedValue(null),
-          },
-        };
-        return callback(mockTx);
-      });
+    it('should throw NotFoundException when custody does not exist (pre-lookup)', async () => {
+      mockPrismaService.custody.findUnique.mockResolvedValue(null);
 
       await expect(service.violationCustody(custodyId)).rejects.toThrow(
         NotFoundException,
@@ -924,6 +945,11 @@ describe('CustodyService', () => {
         pet: { id: 'pet-123', name: 'Buddy' },
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -933,7 +959,6 @@ describe('CustodyService', () => {
         return callback(mockTx);
       });
 
-      // DomainException should be thrown from state machine validation
       await expect(service.violationCustody(custodyId)).rejects.toThrow();
     });
 
@@ -952,6 +977,11 @@ describe('CustodyService', () => {
         ...mockCustody,
         status: 'VIOLATION',
       };
+
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
 
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
@@ -995,6 +1025,11 @@ describe('CustodyService', () => {
         status: 'VIOLATION',
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -1013,7 +1048,7 @@ describe('CustodyService', () => {
       );
     });
 
-    it('should log timeline event with transition details on custody violation', async () => {
+    it('should log availability change when status changes on violation', async () => {
       const mockCustody = {
         id: custodyId,
         status: 'ACTIVE',
@@ -1029,6 +1064,12 @@ describe('CustodyService', () => {
         status: 'VIOLATION',
       };
 
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+
       mockPrismaService.$transaction.mockImplementation(async (callback) => {
         const mockTx = {
           custody: {
@@ -1041,20 +1082,166 @@ describe('CustodyService', () => {
 
       await service.violationCustody(custodyId);
 
+      expect(
+        mockAvailabilityService.detectAndLogStatusChange,
+      ).toHaveBeenCalledWith({
+        petId: 'pet-123',
+        previousStatus: PetStatus.IN_CUSTODY,
+        actorId: 'user-123',
+        reason: 'CUSTODY_VIOLATION',
+      });
+    });
+  });
+
+  describe('cancelCustody', () => {
+    const custodyId = 'custody-123';
+
+    it('should throw NotFoundException when custody does not exist (pre-lookup)', async () => {
+      mockPrismaService.custody.findUnique.mockResolvedValue(null);
+
+      await expect(service.cancelCustody(custodyId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should successfully cancel custody and log availability change', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'ACTIVE',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'CANCELLED',
+      };
+
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.IN_CUSTODY);
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      const result = await service.cancelCustody(custodyId, 'No longer needed');
+
+      expect(result.status).toBe('CANCELLED');
       expect(mockEventsService.logEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           entityType: 'CUSTODY',
-          entityId: custodyId,
-          eventType: 'CUSTODY_VIOLATION',
-          actorId: 'user-123',
-          payload: expect.objectContaining({
-            petId: 'pet-123',
-            holderId: 'user-123',
-            fromStatus: 'ACTIVE',
-            toStatus: 'VIOLATION',
-          }),
+          eventType: 'CUSTODY_CANCELLED',
         }),
       );
+      expect(
+        mockAvailabilityService.detectAndLogStatusChange,
+      ).toHaveBeenCalledWith({
+        petId: 'pet-123',
+        previousStatus: PetStatus.IN_CUSTODY,
+        actorId: 'user-123',
+        reason: 'CUSTODY_CANCELLED',
+      });
+    });
+
+    it('should not log availability change when status is unchanged', async () => {
+      const mockCustody = {
+        id: custodyId,
+        status: 'PENDING',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        escrowId: null,
+        holder: { id: 'user-123', email: 'user@example.com' },
+        pet: { id: 'pet-123', name: 'Buddy' },
+      };
+
+      const mockUpdatedCustody = {
+        ...mockCustody,
+        status: 'CANCELLED',
+      };
+
+      mockPrismaService.custody.findUnique.mockResolvedValue({
+        id: custodyId,
+        petId: 'pet-123',
+      });
+      mockAvailabilityService.resolve.mockResolvedValue(PetStatus.AVAILABLE);
+
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            findUnique: jest.fn().mockResolvedValue(mockCustody),
+            update: jest.fn().mockResolvedValue(mockUpdatedCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.cancelCustody(custodyId);
+
+      expect(
+        mockAvailabilityService.detectAndLogStatusChange,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('availability change logging', () => {
+    it('should resolve previous status before custody mutations', async () => {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 7);
+
+      const dto: CreateCustodyDto = {
+        petId: 'pet-123',
+        startDate: futureDate.toISOString(),
+        durationDays: 14,
+      };
+
+      const mockPet = {
+        id: 'pet-123',
+        name: 'Buddy',
+        species: 'DOG',
+      };
+
+      const mockCustody = {
+        id: 'custody-123',
+        status: 'PENDING',
+        type: 'TEMPORARY',
+        holderId: 'user-123',
+        petId: 'pet-123',
+        startDate: new Date(dto.startDate),
+        endDate: new Date(),
+        depositAmount: null,
+        escrowId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        pet: mockPet,
+      };
+
+      mockPrismaService.pet.findUnique.mockResolvedValue(mockPet);
+      mockPrismaService.adoption.findFirst.mockResolvedValue(null);
+      mockPrismaService.custody.findFirst.mockResolvedValue(null);
+      mockPrismaService.$transaction.mockImplementation(async (callback) => {
+        const mockTx = {
+          custody: {
+            create: jest.fn().mockResolvedValue(mockCustody),
+          },
+        };
+        return callback(mockTx);
+      });
+
+      await service.createCustody('user-123', dto);
+
+      expect(mockAvailabilityService.resolve).toHaveBeenCalledWith('pet-123');
     });
   });
 });

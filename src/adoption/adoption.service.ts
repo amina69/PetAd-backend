@@ -18,6 +18,8 @@ import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
@@ -33,9 +35,31 @@ export class AdoptionService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
+    private readonly availability: PetAvailabilityService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
+
+  /**
+   * Fires PET_AVAILABILITY_CHANGED when the pet's resolved status differs from
+   * the status captured before the mutation. No-op when no prior status was
+   * captured.
+   */
+  private async logAvailabilityChange(
+    petId: string,
+    previousStatus: PetStatus | undefined,
+    actorId: string,
+    reason: string,
+  ): Promise<void> {
+    if (!previousStatus) return;
+
+    await this.availability.detectAndLogStatusChange({
+      petId,
+      previousStatus,
+      actorId,
+      reason,
+    });
+  }
 
   /**
    * Creates an adoption request and fires an ADOPTION_REQUESTED event.
@@ -43,7 +67,9 @@ export class AdoptionService {
    * Throws ConflictException if the pet has no owner or already has an active adoption.
    */
   async requestAdoption(adopterId: string, dto: CreateAdoptionDto) {
-    return this.prisma.$transaction(async (tx) => {
+    const previousStatus = await this.availability.resolve(dto.petId);
+
+    const adoption = await this.prisma.$transaction(async (tx) => {
       const pet = await tx.pet.findUnique({ where: { id: dto.petId } });
 
       if (!pet) {
@@ -101,6 +127,15 @@ export class AdoptionService {
 
       return adoption;
     });
+
+    await this.logAvailabilityChange(
+      dto.petId,
+      previousStatus,
+      adopterId,
+      'ADOPTION_REQUESTED',
+    );
+
+    return adoption;
   }
 
   /**
@@ -123,6 +158,8 @@ export class AdoptionService {
 
     // Enforce state machine before updating
     this.adoptionStateMachine.assertValidTransition(existing.status, dto.status);
+
+    const previousStatus = await this.availability.resolve(existing.petId);
 
     const updated = await this.prisma.adoption.update({
       where: { id: adoptionId },
@@ -179,6 +216,13 @@ export class AdoptionService {
       }
     }
 
+    await this.logAvailabilityChange(
+      updated.petId,
+      previousStatus,
+      actorId,
+      `ADOPTION_${dto.status}`,
+    );
+
     return updated;
   }
 
@@ -192,7 +236,9 @@ export class AdoptionService {
    * @throws DomainException if adoption is not in PENDING status
    */
   async approveAdoption(adoptionId: string, adminId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    let previousStatus: PetStatus | undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       const adoption = await tx.adoption.findUnique({
         where: { id: adoptionId },
         include: {
@@ -210,6 +256,8 @@ export class AdoptionService {
         adoption.status,
         AdoptionStatus.APPROVED,
       );
+
+      previousStatus = await this.availability.resolve(adoption.petId);
 
       // Update adoption status to APPROVED
       const updated = await tx.adoption.update({
@@ -284,6 +332,15 @@ export class AdoptionService {
 
       return updated;
     });
+
+    await this.logAvailabilityChange(
+      updated.petId,
+      previousStatus,
+      adminId,
+      'ADOPTION_APPROVED',
+    );
+
+    return updated;
   }
 
   /**
@@ -300,7 +357,9 @@ export class AdoptionService {
     adminId: string,
     dto: RejectAdoptionDto,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    let previousStatus: PetStatus | undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       const adoption = await tx.adoption.findUnique({
         where: { id: adoptionId },
         include: {
@@ -318,6 +377,8 @@ export class AdoptionService {
         adoption.status,
         AdoptionStatus.REJECTED,
       );
+
+      previousStatus = await this.availability.resolve(adoption.petId);
 
       // Prepare notes with rejection reason
       const rejectionNotes = dto.reason
@@ -389,6 +450,15 @@ export class AdoptionService {
 
       return updated;
     });
+
+    await this.logAvailabilityChange(
+      updated.petId,
+      previousStatus,
+      adminId,
+      'ADOPTION_REJECTED',
+    );
+
+    return updated;
   }
 
   /**

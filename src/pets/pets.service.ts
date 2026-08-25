@@ -14,7 +14,10 @@ import {
 import { Prisma, AdoptionStatus, CustodyStatus } from '@prisma/client';
 import { UserRole } from '../common/enums';
 import { PetStatus } from '../common/enums/pet-status.enum';
-import { PetAvailabilityService } from './services/pet-availability.service';
+import {
+  PetAvailabilityService,
+  computePetStatus,
+} from './services/pet-availability.service';
 import { petAvailabilityReducer } from '../events/reducers/pet-availability.reducer';
 
 @Injectable()
@@ -34,10 +37,9 @@ export class PetsService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    const isAvailable =
-      await this.availabilityService.getPetAvailability(petId);
+    const status = await this.availabilityService.resolve(petId);
 
-    return { ...pet, isAvailable };
+    return { ...pet, isAvailable: status === PetStatus.AVAILABLE, status };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
@@ -119,11 +121,36 @@ export class PetsService {
     const data = pets.map((pet) => ({
       ...pet,
       isAvailable: pet.adoptions.length === 0 && pet.custodies.length === 0,
+      status: this.statusFromRelations(pet),
     }));
 
     const meta = new PaginationMetaDto(page, limit, total);
 
     return new PaginatedResponseDto(data, meta);
+  }
+
+  /**
+   * Derives the resolved PetStatus in memory from the already-included
+   * relations (latest adoption by createdAt, presence of an active custody),
+   * avoiding per-pet queries. The findAll include filters guarantee
+   * `adoptions` holds no REJECTED/CANCELLED records and `custodies` only
+   * ACTIVE ones.
+   */
+  private statusFromRelations(pet: {
+    adoptions: { status: AdoptionStatus; createdAt: Date }[];
+    custodies: { id: string }[];
+  }): PetStatus {
+    const latestAdoption =
+      pet.adoptions.length > 0
+        ? pet.adoptions.reduce((latest, adoption) =>
+            adoption.createdAt > latest.createdAt ? adoption : latest,
+          )
+        : null;
+
+    return computePetStatus(
+      latestAdoption?.status ?? null,
+      pet.custodies.length > 0,
+    );
   }
 
   async findOne(id: string) {
