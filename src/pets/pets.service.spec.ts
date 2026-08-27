@@ -19,6 +19,7 @@ const mockPrisma = {
 
 const mockAvailabilityService = {
   getPetAvailability: jest.fn(),
+  resolve: jest.fn(),
 };
 
 describe('PetsService', () => {
@@ -75,10 +76,12 @@ describe('PetsService', () => {
 
     mockPrisma.pet.findMany.mockResolvedValue(mockPets);
     mockPrisma.pet.count.mockResolvedValue(1);
+    mockAvailabilityService.resolve.mockResolvedValue('AVAILABLE');
 
     const result = await service.findAll({});
 
     expect(result.data[0].isAvailable).toBe(true);
+    expect(result.data[0].computedStatus).toBe('AVAILABLE');
     expect(result.meta.total).toBe(1);
   });
 
