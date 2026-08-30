@@ -3,7 +3,7 @@
 Thanks for your interest in contributing! Here's how to get started.
 
 ---
-<!-- go -->
+
 ## 🚀 Quick Start
 
 1. **Fork the repository**
