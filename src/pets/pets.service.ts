@@ -34,10 +34,9 @@ export class PetsService {
       throw new NotFoundException(`Pet with ID ${petId} not found`);
     }
 
-    const isAvailable =
-      await this.availabilityService.getPetAvailability(petId);
+    const computedStatus = await this.availabilityService.resolve(petId);
 
-    return { ...pet, isAvailable };
+    return { ...pet, computedStatus, isAvailable: computedStatus === PetStatus.AVAILABLE };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
@@ -116,10 +115,17 @@ export class PetsService {
       this.prisma.pet.count({ where }),
     ]);
 
-    const data = pets.map((pet) => ({
-      ...pet,
-      isAvailable: pet.adoptions.length === 0 && pet.custodies.length === 0,
-    }));
+    // Resolve computed status for each pet
+    const data = await Promise.all(
+      pets.map(async (pet) => {
+        const computedStatus = await this.availabilityService.resolve(pet.id);
+        return {
+          ...pet,
+          computedStatus,
+          isAvailable: computedStatus === PetStatus.AVAILABLE,
+        };
+      }),
+    );
 
     const meta = new PaginationMetaDto(page, limit, total);
 
@@ -195,29 +201,29 @@ export class PetsService {
     const replayedStatus = petAvailabilityReducer(events);
 
     // Get current DB-based availability
-    const dbAvailable = await this.availabilityService.getPetAvailability(petId);
+    const computedStatus = await this.availabilityService.resolve(petId);
 
     // Check if there's a discrepancy
     // AVAILABLE in replay -> pet should be available in DB
-    // PENDING means "still available until approved" -> matches dbAvailable=true
-    // ADOPTED in replay means permanently not available -> matches dbAvailable=false
-    // IN_CUSTODY means temporarily unavailable -> matches dbAvailable=false
+    // PENDING means "still available until approved" -> matches computedStatus=AVAILABLE
+    // ADOPTED in replay means permanently not available -> matches computedStatus=ADOPTED
+    // IN_CUSTODY means temporarily unavailable -> matches computedStatus=IN_CUSTODY
     const isMatch =
-      (replayedStatus === PetStatus.AVAILABLE && dbAvailable) ||
-      (replayedStatus === PetStatus.PENDING && dbAvailable) ||
-      (replayedStatus === PetStatus.ADOPTED && !dbAvailable) ||
-      (replayedStatus === PetStatus.IN_CUSTODY && !dbAvailable);
+      (replayedStatus === PetStatus.AVAILABLE && computedStatus === PetStatus.AVAILABLE) ||
+      (replayedStatus === PetStatus.PENDING && computedStatus === PetStatus.PENDING) ||
+      (replayedStatus === PetStatus.ADOPTED && computedStatus === PetStatus.ADOPTED) ||
+      (replayedStatus === PetStatus.IN_CUSTODY && computedStatus === PetStatus.IN_CUSTODY);
 
     return {
       petId,
       replayedStatus,
-      dbAvailable,
+      computedStatus,
       isMatch,
       eventCount: events.length,
       ...(isMatch
         ? { message: 'Pet availability is correctly synchronized' }
         : {
-            discrepancy: `Event replay indicates '${replayedStatus}' but DB reports '${dbAvailable ? 'AVAILABLE' : 'NOT_AVAILABLE'}'`,
+            discrepancy: `Event replay indicates '${replayedStatus}' but DB computed state is '${computedStatus}'`,
           }),
     };
   }
