@@ -6,6 +6,7 @@ import { EventsService } from '../events/events.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
 import { EventType, EventEntityType, AdoptionStatus } from '@prisma/client';
 import { DomainException } from '../common/exceptions/domain.exception';
+import { EventLedgerService } from '../event-ledger/event-ledger.service';
 
 const ADOPTER_ID = 'adopter-uuid';
 const PET_ID = 'pet-uuid';
@@ -50,6 +51,10 @@ describe('AdoptionService', () => {
     canTransition: jest.fn(),
   };
 
+  const mockEventLedger = {
+    appendEvent: jest.fn().mockResolvedValue({ id: 'evt-1' }),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -59,6 +64,7 @@ describe('AdoptionService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: EventsService, useValue: mockEvents },
         { provide: AdoptionStateMachine, useValue: mockStateMachine },
+        { provide: EventLedgerService, useValue: mockEventLedger },
       ],
     }).compile();
 
@@ -359,6 +365,84 @@ describe('AdoptionService', () => {
           actorId: ACTOR_ID,
         }),
       );
+
+      expect(result.status).toBe(AdoptionStatus.APPROVED);
+    });
+
+    it('appends ADOPTION_APPROVED to event ledger with correct payload', async () => {
+      mockPrisma.adoption.findUnique.mockResolvedValue(pendingAdoption);
+      mockPrisma.adoption.update.mockResolvedValue(approvedAdoption);
+      mockEvents.logEvent.mockResolvedValue({});
+
+      await service.approveAdoption(ADOPTION_ID, ACTOR_ID);
+
+      expect(mockEventLedger.appendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aggregateType: 'ADOPTION',
+          aggregateId: ADOPTION_ID,
+          eventType: 'ADOPTION_APPROVED',
+          actorId: ACTOR_ID,
+          payload: expect.objectContaining({
+            petId: PET_ID,
+            adopterId: ADOPTER_ID,
+            approvedBy: ACTOR_ID,
+            approvedAt: expect.any(String),
+          }),
+        }),
+      );
+    });
+
+    it('appends PET_ADOPTION_APPROVED to PET aggregate', async () => {
+      mockPrisma.adoption.findUnique.mockResolvedValue(pendingAdoption);
+      mockPrisma.adoption.update.mockResolvedValue(approvedAdoption);
+      mockEvents.logEvent.mockResolvedValue({});
+
+      await service.approveAdoption(ADOPTION_ID, ACTOR_ID);
+
+      expect(mockEventLedger.appendEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aggregateType: 'PET',
+          aggregateId: PET_ID,
+          eventType: 'PET_ADOPTION_APPROVED',
+          actorId: ACTOR_ID,
+          payload: expect.objectContaining({
+            adoptionId: ADOPTION_ID,
+            petId: PET_ID,
+            adopterId: ADOPTER_ID,
+            approvedBy: ACTOR_ID,
+          }),
+        }),
+      );
+    });
+
+    it('calls appendEvent twice (once for ADOPTION, once for PET)', async () => {
+      mockPrisma.adoption.findUnique.mockResolvedValue(pendingAdoption);
+      mockPrisma.adoption.update.mockResolvedValue(approvedAdoption);
+      mockEvents.logEvent.mockResolvedValue({});
+
+      await service.approveAdoption(ADOPTION_ID, ACTOR_ID);
+
+      expect(mockEventLedger.appendEvent).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not fail if eventLedgerService is not provided', async () => {
+      // Create service without EventLedgerService
+      const moduleWithoutLedger: TestingModule = await Test.createTestingModule({
+        providers: [
+          AdoptionService,
+          { provide: PrismaService, useValue: mockPrisma },
+          { provide: EventsService, useValue: mockEvents },
+          { provide: AdoptionStateMachine, useValue: mockStateMachine },
+        ],
+      }).compile();
+
+      const svc = moduleWithoutLedger.get<AdoptionService>(AdoptionService);
+
+      mockPrisma.adoption.findUnique.mockResolvedValue(pendingAdoption);
+      mockPrisma.adoption.update.mockResolvedValue(approvedAdoption);
+      mockEvents.logEvent.mockResolvedValue({});
+
+      const result = await svc.approveAdoption(ADOPTION_ID, ACTOR_ID);
 
       expect(result.status).toBe(AdoptionStatus.APPROVED);
     });

@@ -18,6 +18,7 @@ import { UpdateAdoptionStatusDto } from './dto/update-adoption-status.dto';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
+import { EventLedgerService } from '../event-ledger/event-ledger.service';
 
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
@@ -33,6 +34,8 @@ export class AdoptionService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
+    @Optional()
+    private readonly eventLedgerService?: EventLedgerService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -249,7 +252,7 @@ export class AdoptionService {
         `Adoption ${adoptionId} approved by admin ${adminId}. Pet ${adoption.petId} status remains PENDING for escrow.`,
       );
 
-      // Log ADOPTION_APPROVED event
+      // Log ADOPTION_APPROVED event to event log
       await this.events.logEvent({
         entityType: EventEntityType.ADOPTION,
         entityId: adoptionId,
@@ -262,6 +265,37 @@ export class AdoptionService {
           ownerId: adoption.ownerId,
         } satisfies Prisma.InputJsonValue,
       });
+
+      // Append ADOPTION_APPROVED event to event ledger
+      if (this.eventLedgerService) {
+        await this.eventLedgerService.appendEvent({
+          aggregateType: EventEntityType.ADOPTION,
+          aggregateId: adoptionId,
+          eventType: 'ADOPTION_APPROVED',
+          actorId: adminId,
+          payload: {
+            petId: adoption.petId,
+            adopterId: adoption.adopterId,
+            approvedBy: adminId,
+            approvedAt: new Date().toISOString(),
+          },
+        });
+
+        // Also append PET_ADOPTION_APPROVED on PET aggregate
+        await this.eventLedgerService.appendEvent({
+          aggregateType: EventEntityType.PET,
+          aggregateId: adoption.petId,
+          eventType: 'PET_ADOPTION_APPROVED',
+          actorId: adminId,
+          payload: {
+            adoptionId,
+            petId: adoption.petId,
+            adopterId: adoption.adopterId,
+            approvedBy: adminId,
+            approvedAt: new Date().toISOString(),
+          },
+        });
+      }
 
       // Best-effort: enqueue notification email
       if (this.notificationQueueService && adoption.adopter.email) {
