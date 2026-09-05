@@ -45,6 +45,10 @@ export class NotificationQueueService implements OnModuleDestroy {
     );
   }
 
+  getQueue(): Queue<SendTransactionalEmailJobInput> {
+    return this.queue;
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
   }
