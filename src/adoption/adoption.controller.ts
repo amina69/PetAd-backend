@@ -11,7 +11,6 @@ import {
   UseInterceptors,
   BadRequestException,
   UploadedFiles,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,33 +21,25 @@ import { AdoptionService } from './adoption.service';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { DocumentsService } from '../documents/documents.service';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { EventsService } from '../events/events.service';
-import { EventEntityType, EventType } from '@prisma/client';
 import { Get, Query } from '@nestjs/common';
 import { ApiQuery, ApiResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FilterAdoptionsDto } from './dto/filter-adoptions.dto';
 import { CurrentUser as GetUser } from '../auth/decorators/current-user.decorator';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 
-
 interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string; sub?: string };
 }
 
+@ApiTags('adoption')
 @Controller('adoption')
 @UseGuards(JwtAuthGuard)
 export class AdoptionController {
   constructor(
     private readonly adoptionService: AdoptionService,
     private readonly documentsService: DocumentsService,
-    private readonly eventsService: EventsService,
   ) {}
 
-  /**
-   * POST /adoption/requests
-   * Any authenticated user can request to adopt a pet.
-   * Fires ADOPTION_REQUESTED event on success.
-   */
   @Post('requests')
   @HttpCode(HttpStatus.CREATED)
   requestAdoption(@Req() req: AuthRequest, @Body() dto: CreateAdoptionDto) {
@@ -58,11 +49,6 @@ export class AdoptionController {
     );
   }
 
-  /**
-   * PATCH /adoption/:id/approve
-   * Admin-only. Approves a pending adoption request.
-   * Fires ADOPTION_APPROVED event on success.
-   */
   @Patch(':id/approve')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
@@ -78,11 +64,6 @@ export class AdoptionController {
     );
   }
 
-  /**
-   * PATCH /adoption/:id/reject
-   * Admin-only. Rejects a pending adoption request.
-   * Updates adoption status to REJECTED and pet becomes available again.
-   */
   @Patch(':id/reject')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
@@ -103,18 +84,19 @@ export class AdoptionController {
     );
   }
 
-  /**
-   * PATCH /adoption/:id/complete
-   * Admin-only. Marks an adoption as completed.
-   * Fires ADOPTION_COMPLETED event on success.
-   */
   @Patch(':id/complete')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Complete an adoption (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Adoption completed successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'Adoption not found' })
+  @ApiResponse({ status: 422, description: 'Invalid status transition' })
   completeAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
-    return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
-      status: 'COMPLETED',
-    });
+    return this.adoptionService.complete(
+      id,
+      (req.user.userId || req.user.sub) as string,
+    );
   }
 
   @Post(':id/documents')
@@ -153,21 +135,27 @@ export class AdoptionController {
     );
   }
 
-  /**
-   * GET /adoption
-   * Retrieves all adoptions matching the query parameters and the user's role constraints.
-   */
   @Get()
   @ApiOperation({ summary: 'Get all adoptions for the current user based on role' })
-  @ApiQuery({ name: 'status', required: false, enum: ['REQUESTED', 'PENDING', 'APPROVED', 'ESCROW_FUNDED', 'COMPLETED', 'REJECTED', 'CANCELLED'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: [
+      'REQUESTED',
+      'PENDING',
+      'APPROVED',
+      'ESCROW_FUNDED',
+      'COMPLETED',
+      'REJECTED',
+      'CANCELLED',
+    ],
+  })
   @ApiQuery({ name: 'petId', required: false, type: String })
   @ApiResponse({ status: 200, description: 'List of adoptions' })
   async findAll(
     @GetUser() user: any,
     @Query() query: FilterAdoptionsDto,
   ) {
-    // If the CurrentUser decorator isn't wired properly, fallback to req.user would be needed,
-    // but assuming @GetUser() returns the JwtPayload directly.
     return this.adoptionService.findAll(user, query);
   }
 }
