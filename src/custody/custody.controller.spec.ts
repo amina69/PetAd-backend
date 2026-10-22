@@ -4,6 +4,7 @@ import { CustodyService } from './custody.service';
 import type { CreateCustodyDto } from './dto/create-custody.dto';
 import type { CustodyResponseDto } from './dto/custody-response.dto';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
+import { PrismaService } from '../prisma/prisma.service';
 
 describe('CustodyController', () => {
   let controller: CustodyController;
@@ -13,6 +14,10 @@ describe('CustodyController', () => {
     createCustody: jest.fn(),
   };
 
+  const mockPrismaService = {
+    user: { findUnique: jest.fn() },
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CustodyController],
@@ -20,6 +25,10 @@ describe('CustodyController', () => {
         {
           provide: CustodyService,
           useValue: mockCustodyService,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();

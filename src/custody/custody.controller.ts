@@ -19,6 +19,7 @@ import {
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
 import { CustodyService } from './custody.service';
+import { RequireVerifiedEmail } from '../auth/decorators/require-verified-email.decorator';
 import type { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 
@@ -29,12 +30,13 @@ export class CustodyController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
+  @RequireVerifiedEmail()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Create a custody agreement',
     description:
-      'Request temporary custody of an available pet for a specified time period with optional deposit',
+      'Request temporary custody of an available pet for a specified time period with optional deposit. Requires a verified email address.',
   })
   @ApiResponse({
     status: 201,
@@ -60,6 +62,18 @@ export class CustodyController {
       example: {
         statusCode: 401,
         message: 'Unauthorized',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Email address not verified',
+    schema: {
+      example: {
+        statusCode: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message:
+          'Email address is not verified. Please verify your email before continuing.',
       },
     },
   })
