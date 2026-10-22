@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { EmailVerificationService } from './email-verification.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './jwt.strategy';
@@ -12,6 +14,7 @@ import { RolesGuard } from './guards/roles.guard';
   imports: [
     PrismaModule,
     ConfigModule,
+    EmailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -21,7 +24,14 @@ import { RolesGuard } from './guards/roles.guard';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard],
+  providers: [
+    AuthService,
+    EmailVerificationService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
   controllers: [AuthController],
+  exports: [EmailVerificationService],
 })
 export class AuthModule {}

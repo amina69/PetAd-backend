@@ -28,6 +28,7 @@ import { Get, Query } from '@nestjs/common';
 import { ApiQuery, ApiResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FilterAdoptionsDto } from './dto/filter-adoptions.dto';
 import { CurrentUser as GetUser } from '../auth/decorators/current-user.decorator';
+import { RequireVerifiedEmail } from '../auth/decorators/require-verified-email.decorator';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 
 
@@ -46,10 +47,11 @@ export class AdoptionController {
 
   /**
    * POST /adoption/requests
-   * Any authenticated user can request to adopt a pet.
+   * Any authenticated user with a verified email can request to adopt a pet.
    * Fires ADOPTION_REQUESTED event on success.
    */
   @Post('requests')
+  @RequireVerifiedEmail()
   @HttpCode(HttpStatus.CREATED)
   requestAdoption(@Req() req: AuthRequest, @Body() dto: CreateAdoptionDto) {
     return this.adoptionService.requestAdoption(

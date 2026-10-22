@@ -2,18 +2,23 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { EmailVerificationService } from './email-verification.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -31,6 +36,18 @@ export class AuthService {
         lastName,
       },
     });
+
+    // Send the verification email best-effort: registration must succeed
+    // even when token persistence or email delivery fails.
+    try {
+      await this.emailVerificationService.sendVerificationEmail(user);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Registration succeeded but verification email failed for ${email}: ${reason}`,
+      );
+    }
+
     const payload = { sub: user.id, email: user.email, role: user.role };
     const access_token = await this.jwtService.signAsync(payload);
     return {

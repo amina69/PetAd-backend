@@ -3,6 +3,7 @@ import { AdoptionController } from './adoption.controller';
 import { AdoptionService } from './adoption.service';
 import { DocumentsService } from '../documents/documents.service';
 import { EventsService } from '../events/events.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { EventEntityType, EventType } from '@prisma/client';
 import { Request } from 'express';
 
@@ -25,6 +26,10 @@ describe('AdoptionController', () => {
     logEvent: jest.fn(),
   };
 
+  const mockPrismaService = {
+    user: { findUnique: jest.fn() },
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -42,6 +47,10 @@ describe('AdoptionController', () => {
         {
           provide: EventsService,
           useValue: mockEventsService,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();

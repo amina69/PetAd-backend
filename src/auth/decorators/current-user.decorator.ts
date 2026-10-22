@@ -4,6 +4,8 @@ export interface CurrentUserPayload {
   userId: string;
   email: string;
   role: string;
+  /** JWT "sub" claim — populated by JwtStrategy; use as fallback for userId. */
+  sub?: string;
 }
 
 export const CurrentUser = createParamDecorator(
