@@ -10,9 +10,7 @@ import { LoggingService } from '../../logging/logging.service';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  constructor(
-    private readonly loggingService: LoggingService,
-  ) {}
+  constructor(private readonly loggingService: LoggingService) {}
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
     const ctx = host.switchToHttp();
@@ -29,14 +27,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = exception.message;
     }
 
+    // JwtStrategy populates `sub`; some callers still read `userId`.
+    const { user: requestUser } = request as unknown as {
+      user?: { sub?: string; userId?: string };
+    };
+
     await this.loggingService.log({
       level: 'ERROR',
       action: 'HTTP_EXCEPTION',
-      message:
-        typeof message === 'string'
-          ? message
-          : JSON.stringify(message),
-      userId: (request as any).user?.sub,
+      message: typeof message === 'string' ? message : JSON.stringify(message),
+      userId: requestUser?.sub ?? requestUser?.userId,
       metadata: {
         statusCode: status,
         path: request.url,
@@ -44,23 +44,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
       },
     });
 
+    // Structured exceptions (e.g. { code, message, reasons }) keep their
+    // machine-readable fields at the top level of the response body, with
+    // the human-readable message kept under `message`.
+    let details: Record<string, unknown> = {};
+    if (typeof message === 'object' && message !== null) {
+      const { message: innerMessage, ...rest } = message as Record<
+        string,
+        unknown
+      >;
+      details = rest;
+      message = (innerMessage ?? message) as string | object;
+    }
+
     response.status(status).json({
       success: false,
       statusCode: status,
       timestamp: new Date().toISOString(),
       path: request.url,
+      ...details,
       message,
     });
   }
 }
-
-
-
-
-
-
-
-
-
-
-

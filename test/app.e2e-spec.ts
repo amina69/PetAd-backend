@@ -16,6 +16,12 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
+  afterAll(async () => {
+    // Closing the app releases the Redis/Prisma handles opened by AppModule,
+    // otherwise Jest never exits.
+    await app.close();
+  });
+
   it('/ (GET)', () => {
     return request(app.getHttpServer())
       .get('/')

@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
@@ -42,10 +43,12 @@ export class AuthService {
   async login(dto: LoginDto) {
     const { email, password } = dto;
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
+    if (!user || user.status === UserStatus.DELETED) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    const passwordValid = await bcrypt.compare(password, user.password);
+    // Anonymised accounts have their password hash removed.
+    const passwordValid =
+      !!user.password && (await bcrypt.compare(password, user.password));
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
