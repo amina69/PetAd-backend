@@ -72,6 +72,12 @@ enum EventEntityType {
 }
 
 
+enum ShelterVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum EventType {
   USER_REGISTERED
   PET_REGISTERED
@@ -95,6 +101,7 @@ enum EventType {
   ESCROW_RELEASED
   ESCROW_REFUNDED
   TRUST_SCORE_UPDATED
+  SHELTER_VERIFIED
 }
 
 enum LogLevel {
@@ -130,6 +137,8 @@ model User {
   events EventLog[] @relation("ActorEvents")
 
   documents Document[]
+
+  shelterProfile ShelterProfile?
 
   @@map("users")
 }
@@ -279,6 +288,25 @@ model EventLog {
   @@index([eventType])
   @@index([createdAt])
   @@map("event_logs")
+}
+
+model ShelterProfile {
+  id                 String                  @id @default(uuid())
+  userId             String                  @unique @map("user_id")
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orgName            String                  @map("org_name")
+  registrationNumber String                  @map("registration_number")
+  address            String
+  phone              String
+
+  verificationStatus ShelterVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?               @map("verified_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("shelter_profiles")
 }
 
 model Document {

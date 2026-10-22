@@ -11,11 +11,33 @@ import {
   PaginatedResponseDto,
   PaginationMetaDto,
 } from '../common/dto/paginated-response.dto';
-import { Prisma, AdoptionStatus, CustodyStatus } from '@prisma/client';
+import {
+  Prisma,
+  AdoptionStatus,
+  CustodyStatus,
+  ShelterVerificationStatus,
+} from '@prisma/client';
 import { UserRole } from '../common/enums';
 import { PetStatus } from '../common/enums/pet-status.enum';
 import { PetAvailabilityService } from './services/pet-availability.service';
 import { petAvailabilityReducer } from '../events/reducers/pet-availability.reducer';
+
+/** Owner projection that also fetches the (public-safe) shelter badge data. */
+const OWNER_WITH_SHELTER = {
+  include: {
+    shelterProfile: {
+      select: { id: true, orgName: true, verificationStatus: true },
+    },
+  },
+};
+
+type OwnerWithShelter = {
+  shelterProfile: {
+    id: string;
+    orgName: string;
+    verificationStatus: ShelterVerificationStatus;
+  } | null;
+};
 
 @Injectable()
 export class PetsService {
@@ -27,7 +49,7 @@ export class PetsService {
   async getPetById(petId: string) {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
-      include: { currentOwner: true },
+      include: { currentOwner: OWNER_WITH_SHELTER },
     });
 
     if (!pet) {
@@ -37,7 +59,11 @@ export class PetsService {
     const isAvailable =
       await this.availabilityService.getPetAvailability(petId);
 
-    return { ...pet, isAvailable };
+    return {
+      ...pet,
+      currentOwner: this.toOwnerResponse(pet.currentOwner),
+      isAvailable,
+    };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
@@ -97,7 +123,7 @@ export class PetsService {
         skip,
         take: limit,
         include: {
-          currentOwner: true,
+          currentOwner: OWNER_WITH_SHELTER,
           adoptions: {
             where: {
               status: {
@@ -118,6 +144,7 @@ export class PetsService {
 
     const data = pets.map((pet) => ({
       ...pet,
+      currentOwner: this.toOwnerResponse(pet.currentOwner),
       isAvailable: pet.adoptions.length === 0 && pet.custodies.length === 0,
     }));
 
@@ -128,6 +155,29 @@ export class PetsService {
 
   async findOne(id: string) {
     return this.getPetById(id);
+  }
+
+  /**
+   * Strips the shelter profile from the owner payload and exposes a compact
+   * verified badge instead when the owner is a shelter.
+   */
+  private toOwnerResponse<T extends OwnerWithShelter>(owner: T | null) {
+    if (!owner) return null;
+    const { shelterProfile, ...rest } = owner;
+    return {
+      ...rest,
+      ...(shelterProfile
+        ? {
+            shelter: {
+              id: shelterProfile.id,
+              orgName: shelterProfile.orgName,
+              isVerified:
+                shelterProfile.verificationStatus ===
+                ShelterVerificationStatus.APPROVED,
+            },
+          }
+        : {}),
+    };
   }
 
   async update(
@@ -195,7 +245,8 @@ export class PetsService {
     const replayedStatus = petAvailabilityReducer(events);
 
     // Get current DB-based availability
-    const dbAvailable = await this.availabilityService.getPetAvailability(petId);
+    const dbAvailable =
+      await this.availabilityService.getPetAvailability(petId);
 
     // Check if there's a discrepancy
     // AVAILABLE in replay -> pet should be available in DB

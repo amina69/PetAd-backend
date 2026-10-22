@@ -5,6 +5,7 @@ import { PetAvailabilityService } from './services/pet-availability.service';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { CreatePetDto } from './dto/create-pet.dto';
 import { PetSpecies } from '../common/enums';
+import { ShelterVerificationStatus } from '@prisma/client';
 
 const mockPrisma = {
   pet: {
@@ -183,5 +184,67 @@ describe('PetsService', () => {
     mockPrisma.pet.findUnique.mockResolvedValue(null);
 
     await expect(service.findOne('bad-id')).rejects.toThrow(NotFoundException);
+  });
+
+  describe('Shelter verified badge', () => {
+    const shelterOwner = {
+      id: 'shelter-user-1',
+      firstName: 'Hope',
+      lastName: 'Paws',
+      password: 'hash',
+      shelterProfile: {
+        id: 'profile-1',
+        orgName: 'Hope Paws Shelter',
+        verificationStatus: ShelterVerificationStatus.APPROVED,
+      },
+    };
+
+    it('exposes a verified shelter badge and strips the profile on getPetById', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        id: 'pet-1',
+        name: 'Buddy',
+        currentOwner: shelterOwner,
+      });
+      mockAvailabilityService.getPetAvailability.mockResolvedValue(true);
+
+      const result = await service.getPetById('pet-1');
+
+      expect(result.currentOwner).toMatchObject({
+        id: 'shelter-user-1',
+        shelter: {
+          id: 'profile-1',
+          orgName: 'Hope Paws Shelter',
+          isVerified: true,
+        },
+      });
+      expect(result.currentOwner).not.toHaveProperty('shelterProfile');
+    });
+
+    it('marks non-approved shelters as unverified on listings', async () => {
+      mockPrisma.pet.findMany.mockResolvedValue([
+        {
+          id: 'pet-1',
+          name: 'Buddy',
+          adoptions: [],
+          custodies: [],
+          currentOwner: {
+            ...shelterOwner,
+            shelterProfile: {
+              id: 'profile-1',
+              orgName: 'Hope Paws Shelter',
+              verificationStatus: ShelterVerificationStatus.PENDING,
+            },
+          },
+        },
+      ]);
+      mockPrisma.pet.count.mockResolvedValue(1);
+
+      const result = await service.findAll({});
+      const owner = result.data[0].currentOwner as {
+        shelter?: { isVerified: boolean };
+      };
+
+      expect(owner.shelter).toMatchObject({ isVerified: false });
+    });
   });
 });

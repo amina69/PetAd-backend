@@ -14,13 +14,13 @@ import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './logging/logging.module';
+import { SheltersModule } from './users/shelters/shelters.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-
 
 @Module({
   imports: [
@@ -31,9 +31,8 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
         limit: 100,
       },
     ]),
-         
-    
-// To be used only when limits needs to be persisted upon restart
+
+    // To be used only when limits needs to be persisted upon restart
 
     // ThrottlerModule.forRoot({
     //   throttlers: [{ ttl: 60000, limit: 100 }],
@@ -42,7 +41,7 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
     //     port: 6379,
     //   }),
     // }),
-    
+
     PrismaModule,
     PetsModule,
     AdoptionModule,
@@ -55,7 +54,7 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
     LoggingModule,
     JobsModule,
     AdminModule,
-
+    SheltersModule,
   ],
 
   controllers: [AppController],
@@ -73,5 +72,3 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
   ],
 })
 export class AppModule {}
-
-
