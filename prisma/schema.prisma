@@ -175,6 +175,15 @@ model Pet {
   currentOwnerId String?  @map("current_owner_id")
   currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
+  // Location of the listing. Coordinates are stored rounded to ~100 m
+  // (3 decimal places, see PetsService.roundCoordinate) so an owner's exact
+  // address can never be reconstructed from stored data or any API response.
+  city      String?
+  state     String?
+  country   String?
+  latitude  Float?
+  longitude Float?
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -183,6 +192,7 @@ model Pet {
 
   @@index([species])
   @@index([currentOwnerId])
+  @@index([latitude, longitude])
   @@map("pets")
 }
 

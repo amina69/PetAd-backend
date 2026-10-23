@@ -1,4 +1,13 @@
-import { IsString, IsInt, IsOptional, IsArray, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  IsArray,
+  IsEnum,
+  IsLatitude,
+  IsLongitude,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PetGender, PetSize, PetSpecies } from '../../common/enums';
 
@@ -45,4 +54,55 @@ export class CreatePetDto {
   @IsArray()
   @IsOptional()
   images?: string[];
+
+  @ApiPropertyOptional({
+    description: 'City where the pet is located (coarse, safe to expose)',
+    example: 'Berlin',
+  })
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  city?: string;
+
+  @ApiPropertyOptional({
+    description: 'State / province / region where the pet is located',
+    example: 'Berlin',
+  })
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  state?: string;
+
+  @ApiPropertyOptional({
+    description: 'Country where the pet is located',
+    example: 'Germany',
+  })
+  @IsString()
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  country?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Listing latitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.',
+    example: 52.52,
+  })
+  @IsLatitude()
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Listing longitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.',
+    example: 13.405,
+  })
+  @IsLongitude()
+  @IsOptional()
+  longitude?: number;
 }
