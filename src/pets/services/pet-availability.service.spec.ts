@@ -10,6 +10,10 @@ describe('PetAvailabilityService', () => {
   const mockCustodyFindFirst = jest.fn();
 
   const mockPrisma = {
+    pet: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     adoption: { findFirst: mockAdoptionFindFirst },
     custody: { findFirst: mockCustodyFindFirst },
   };
@@ -29,6 +33,58 @@ describe('PetAvailabilityService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('transition', () => {
+    it('persists a valid status transition', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        status: PetStatus.AVAILABLE,
+      });
+      mockPrisma.pet.update.mockResolvedValue({
+        status: PetStatus.PENDING,
+      });
+
+      await expect(
+        service.transition('pet-123', PetStatus.PENDING),
+      ).resolves.toBe(PetStatus.PENDING);
+      expect(mockPrisma.pet.update).toHaveBeenCalledWith({
+        where: { id: 'pet-123' },
+        data: { status: PetStatus.PENDING },
+      });
+    });
+
+    it('rejects invalid transitions before persisting', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        status: PetStatus.ADOPTED,
+      });
+
+      await expect(
+        service.transition('pet-123', PetStatus.PENDING),
+      ).rejects.toMatchObject({ code: 'PET_INVALID_TRANSITION' });
+      expect(mockPrisma.pet.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assertCurrentStatus', () => {
+    it('accepts the expected current status', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        status: PetStatus.PENDING,
+      });
+
+      await expect(
+        service.assertCurrentStatus('pet-123', PetStatus.PENDING),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects a status mismatch with PET_INVALID_TRANSITION', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        status: PetStatus.AVAILABLE,
+      });
+
+      await expect(
+        service.assertCurrentStatus('pet-123', PetStatus.PENDING),
+      ).rejects.toMatchObject({ code: 'PET_INVALID_TRANSITION' });
+    });
   });
 
   describe('resolve', () => {
@@ -178,12 +234,7 @@ describe('PetAvailabilityService', () => {
         where: {
           petId,
           status: {
-            in: [
-              'REQUESTED',
-              'PENDING',
-              'APPROVED',
-              'ESCROW_FUNDED',
-            ],
+            in: ['REQUESTED', 'PENDING', 'APPROVED', 'ESCROW_FUNDED'],
           },
         },
         select: { id: true },

@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { PetSpecies } from '../../src/common/enums';
+import { PetSpecies, PetStatus } from '../../src/common/enums';
 
 describe('Pets Availability (E2E)', () => {
   let app: INestApplication;
@@ -132,5 +132,59 @@ describe('Pets Availability (E2E)', () => {
       .expect(200);
 
     expect(res.body.isAvailable).toBe(false);
+  });
+
+  it('should flag a manually edited status in the availability verifier', async () => {
+    const email = `status_admin_${Date.now()}@test.com`;
+    const password = 'StrongPass123';
+    await request(app.getHttpServer()).post('/auth/register').send({
+      email,
+      password,
+      firstName: 'Status',
+      lastName: 'Admin',
+    });
+
+    const admin = await prisma.user.update({
+      where: { email },
+      data: { role: 'ADMIN' },
+    });
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email, password })
+      .expect(201);
+    const token = (login.body as { access_token: string }).access_token;
+    const pet = await prisma.pet.create({
+      data: {
+        name: 'Status verifier fixture',
+        species: PetSpecies.DOG,
+        currentOwnerId: admin.id,
+      },
+    });
+
+    try {
+      const before = await request(app.getHttpServer())
+        .get(`/pets/${pet.id}/availability/verify`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(before.body.isMatch).toBe(true);
+
+      await prisma.pet.update({
+        where: { id: pet.id },
+        data: { status: PetStatus.ADOPTED },
+      });
+
+      const after = await request(app.getHttpServer())
+        .get(`/pets/${pet.id}/availability/verify`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(after.body).toMatchObject({
+        storedStatus: PetStatus.ADOPTED,
+        replayedStatus: PetStatus.AVAILABLE,
+        isMatch: false,
+      });
+    } finally {
+      await prisma.pet.delete({ where: { id: pet.id } });
+      await prisma.user.delete({ where: { id: admin.id } });
+    }
   });
 });

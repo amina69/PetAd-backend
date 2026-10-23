@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AdoptionStatus, CustodyStatus } from '@prisma/client';
+import { AdoptionStatus, CustodyStatus, Prisma } from '@prisma/client';
 import { PetStatus } from '../../common/enums/pet-status.enum';
+import { assertPetStatus, transitionPetStatus } from './pet-status-transition';
+
+type PetStatusClient = Pick<Prisma.TransactionClient, 'pet'>;
 
 /**
  * Computes pet availability dynamically from active adoption records,
@@ -16,6 +19,46 @@ import { PetStatus } from '../../common/enums/pet-status.enum';
 @Injectable()
 export class PetAvailabilityService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async transition(
+    petId: string,
+    nextStatus: PetStatus,
+    client: PetStatusClient = this.prisma,
+  ): Promise<PetStatus> {
+    const pet = await client.pet.findUnique({
+      where: { id: petId },
+      select: { status: true },
+    });
+
+    if (!pet) {
+      throw new NotFoundException(`Pet with id "${petId}" not found`);
+    }
+
+    const status = transitionPetStatus(pet.status, nextStatus);
+    await client.pet.update({
+      where: { id: petId },
+      data: { status },
+    });
+
+    return status;
+  }
+
+  async assertCurrentStatus(
+    petId: string,
+    expectedStatus: PetStatus,
+    client: PetStatusClient = this.prisma,
+  ): Promise<void> {
+    const pet = await client.pet.findUnique({
+      where: { id: petId },
+      select: { status: true },
+    });
+
+    if (!pet) {
+      throw new NotFoundException(`Pet with id "${petId}" not found`);
+    }
+
+    assertPetStatus(pet.status, expectedStatus);
+  }
 
   /**
    * Resolves the computed availability status for a pet.

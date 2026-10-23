@@ -13,6 +13,8 @@ import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 import { CustodyStatus } from '@prisma/client';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 @Injectable()
 export class CustodyService {
@@ -22,6 +24,7 @@ export class CustodyService {
     private readonly escrowService: EscrowService,
     private readonly usersService: UsersService,
     private readonly stateMachine: CustodyStateMachine,
+    private readonly petAvailabilityService: PetAvailabilityService,
     @Optional()
     private readonly notificationQueueService?: NotificationQueueService,
   ) {}
@@ -122,7 +125,7 @@ export class CustodyService {
       // Create custody record
       const custodyRecord = await tx.custody.create({
         data: {
-          status: CustodyStatus.PENDING,
+          status: CustodyStatus.ACTIVE,
           type: 'TEMPORARY',
           holderId: userId,
           petId,
@@ -135,6 +138,12 @@ export class CustodyService {
           pet: true,
         },
       });
+
+      await this.petAvailabilityService.transition(
+        petId,
+        PetStatus.IN_CUSTODY,
+        tx,
+      );
 
       return custodyRecord;
     });
@@ -202,6 +211,12 @@ export class CustodyService {
         CustodyStatus.RETURNED,
       );
 
+      await this.petAvailabilityService.transition(
+        custody.petId,
+        PetStatus.AVAILABLE,
+        tx,
+      );
+
       const updatedCustody = await tx.custody.update({
         where: { id: custodyId },
         data: { status: CustodyStatus.RETURNED },
@@ -249,6 +264,12 @@ export class CustodyService {
       this.stateMachine.assertCanTransition(
         custody.status,
         CustodyStatus.VIOLATION,
+      );
+
+      await this.petAvailabilityService.transition(
+        custody.petId,
+        PetStatus.AVAILABLE,
+        tx,
       );
 
       const updatedCustody = await tx.custody.update({
@@ -303,6 +324,14 @@ export class CustodyService {
         custody.status,
         CustodyStatus.CANCELLED,
       );
+
+      if (custody.status === CustodyStatus.ACTIVE) {
+        await this.petAvailabilityService.transition(
+          custody.petId,
+          PetStatus.AVAILABLE,
+          tx,
+        );
+      }
 
       const updatedCustody = await tx.custody.update({
         where: { id: custodyId },

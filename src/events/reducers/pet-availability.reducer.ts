@@ -1,4 +1,8 @@
 import { PetStatus } from '../../common/enums/pet-status.enum';
+import {
+  assertPetStatus,
+  transitionPetStatus,
+} from '../../pets/services/pet-status-transition';
 
 /**
  * The initial/default pet availability before any events are applied.
@@ -8,64 +12,67 @@ const DEFAULT_AVAILABILITY = PetStatus.AVAILABLE;
 /**
  * Replays an array of pet events to compute the current availability status.
  *
- * Availability rules from events:
- * - PET_LISTED             → AVAILABLE
- * - ADOPTION_REQUESTED or PET_ADOPTION_REQUESTED → PENDING (still available until approved)
- * - ADOPTION_APPROVED  or PET_ADOPTION_APPROVED  → reserved (PENDING, not yet adopted)
- * - PET_ADOPTED            → ADOPTED (permanently not available)
- * - CUSTODY_STARTED  or PET_CUSTODY_ACTIVE       → IN_CUSTODY (temporarily unavailable)
- * - CUSTODY_RETURNED  or PET_RETURNED            → AVAILABLE again
- *
- * The reducer processes events in chronological order; the last
- * availability-determining event wins.
+ * Lifecycle events are applied through the same transition table used by
+ * write paths, so replay rejects histories containing impossible transitions.
  *
  * @param events - Array of event-like objects with `eventType` and optional `payload`
  * @returns The computed {@link PetStatus}
  */
 export function petAvailabilityReducer(
-  events: { eventType: string; payload?: Record<string, unknown> }[],
+  events: { eventType: string; payload?: unknown }[],
 ): PetStatus {
   let currentStatus: PetStatus = DEFAULT_AVAILABILITY;
 
   for (const event of events) {
+    let nextStatus: PetStatus | undefined;
+
     switch (event.eventType) {
       case 'PET_LISTED':
-        currentStatus = PetStatus.AVAILABLE;
+        nextStatus = PetStatus.AVAILABLE;
         break;
 
-      // Adoption requested — pet is pending but still available until approved
       case 'ADOPTION_REQUESTED':
       case 'PET_ADOPTION_REQUESTED':
-        currentStatus = PetStatus.PENDING;
+        nextStatus = PetStatus.PENDING;
         break;
 
-      // Adoption approved — pet is reserved (pending)
       case 'ADOPTION_APPROVED':
       case 'PET_ADOPTION_APPROVED':
-        currentStatus = PetStatus.PENDING;
+        assertPetStatus(currentStatus, PetStatus.PENDING);
         break;
 
-      // Pet adopted — permanently not available
+      case 'ADOPTION_REJECTED':
+      case 'ADOPTION_CANCELLED':
+        nextStatus = PetStatus.AVAILABLE;
+        break;
+
       case 'ADOPTION_COMPLETED':
       case 'PET_ADOPTED':
-        currentStatus = PetStatus.ADOPTED;
+        nextStatus = PetStatus.ADOPTED;
         break;
 
-      // Custody started or pet custody active — temporarily unavailable
       case 'CUSTODY_STARTED':
       case 'PET_CUSTODY_ACTIVE':
-        currentStatus = PetStatus.IN_CUSTODY;
+        nextStatus = PetStatus.IN_CUSTODY;
         break;
 
-      // Custody returned or pet returned — available again
       case 'CUSTODY_RETURNED':
+      case 'CUSTODY_COMPLETED':
       case 'PET_RETURNED':
-        currentStatus = PetStatus.AVAILABLE;
+      case 'PET_CUSTODY_CANCELLED':
+      case 'CUSTODY_VIOLATION':
+      case 'CUSTODY_CANCELLED':
+        if (currentStatus === PetStatus.IN_CUSTODY) {
+          nextStatus = PetStatus.AVAILABLE;
+        }
         break;
 
       default:
-        // Unknown event types are silently ignored for forward compatibility
         break;
+    }
+
+    if (nextStatus !== undefined && nextStatus !== currentStatus) {
+      currentStatus = transitionPetStatus(currentStatus, nextStatus);
     }
   }
 

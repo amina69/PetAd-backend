@@ -1,7 +1,1 @@
-export enum PetStatus {
-  AVAILABLE = 'AVAILABLE',
-  PENDING = 'PENDING',
-  IN_CUSTODY = 'IN_CUSTODY',
-  ADOPTED = 'ADOPTED',
-}
-
+export { PetStatus } from '@prisma/client';

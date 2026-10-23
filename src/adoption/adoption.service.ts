@@ -19,10 +19,14 @@ import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { AdoptionStateMachine } from './services/adoption-state-machine.service';
 import { EventLedgerService } from '../event-ledger/event-ledger.service';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
+import { PetStatus } from '../common/enums/pet-status.enum';
 
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
   [AdoptionStatus.APPROVED]: EventType.ADOPTION_APPROVED,
+  [AdoptionStatus.REJECTED]: EventType.ADOPTION_REJECTED,
+  [AdoptionStatus.CANCELLED]: EventType.ADOPTION_CANCELLED,
   [AdoptionStatus.COMPLETED]: EventType.ADOPTION_COMPLETED,
 };
 
@@ -34,6 +38,7 @@ export class AdoptionService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
+    private readonly petAvailabilityService: PetAvailabilityService,
     @Optional()
     private readonly eventLedgerService?: EventLedgerService,
     @Optional()
@@ -104,6 +109,12 @@ export class AdoptionService {
         throw new ConflictException('Pet is not available for adoption');
       }
 
+      await this.petAvailabilityService.transition(
+        dto.petId,
+        PetStatus.PENDING,
+        tx,
+      );
+
       const adoption = await tx.adoption.create({
         data: {
           petId: dto.petId,
@@ -145,20 +156,51 @@ export class AdoptionService {
     actorId: string,
     dto: UpdateAdoptionStatusDto,
   ) {
-    const existing = await this.prisma.adoption.findUnique({
-      where: { id: adoptionId },
-    });
+    const { existing, updated } = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.adoption.findUnique({
+        where: { id: adoptionId },
+      });
 
-    if (!existing) {
-      throw new NotFoundException(`Adoption with id "${adoptionId}" not found`);
-    }
+      if (!existing) {
+        throw new NotFoundException(
+          `Adoption with id "${adoptionId}" not found`,
+        );
+      }
 
-    // Enforce state machine before updating
-    this.adoptionStateMachine.assertValidTransition(existing.status, dto.status);
+      this.adoptionStateMachine.assertValidTransition(
+        existing.status,
+        dto.status,
+      );
 
-    const updated = await this.prisma.adoption.update({
-      where: { id: adoptionId },
-      data: { status: dto.status },
+      if (
+        dto.status === AdoptionStatus.REJECTED ||
+        dto.status === AdoptionStatus.CANCELLED
+      ) {
+        await this.petAvailabilityService.transition(
+          existing.petId,
+          PetStatus.AVAILABLE,
+          tx,
+        );
+      } else if (dto.status === AdoptionStatus.COMPLETED) {
+        await this.petAvailabilityService.transition(
+          existing.petId,
+          PetStatus.ADOPTED,
+          tx,
+        );
+      } else {
+        await this.petAvailabilityService.assertCurrentStatus(
+          existing.petId,
+          PetStatus.PENDING,
+          tx,
+        );
+      }
+
+      const updated = await tx.adoption.update({
+        where: { id: adoptionId },
+        data: { status: dto.status },
+      });
+
+      return { existing, updated };
     });
 
     this.logger.log(
@@ -241,6 +283,11 @@ export class AdoptionService {
       this.adoptionStateMachine.assertValidTransition(
         adoption.status,
         AdoptionStatus.APPROVED,
+      );
+      await this.petAvailabilityService.assertCurrentStatus(
+        adoption.petId,
+        PetStatus.PENDING,
+        tx,
       );
 
       // Update adoption status to APPROVED
@@ -426,9 +473,23 @@ export class AdoptionService {
         `Adoption ${adoptionId} rejected by admin ${adminId}. Pet ${adoption.petId} is now available for other adopters.${dto.reason ? ` Reason: ${dto.reason}` : ''}`,
       );
 
-      // Log event (no specific ADOPTION_REJECTED event in schema, but we could add it or use a generic approach)
-      // For now, we'll skip the event log since ADOPTION_REJECTED is not in the EventType enum
-      // If needed, this can be added to the schema later
+      await this.petAvailabilityService.transition(
+        adoption.petId,
+        PetStatus.AVAILABLE,
+        tx,
+      );
+
+      await this.events.logEvent({
+        entityType: EventEntityType.ADOPTION,
+        entityId: adoptionId,
+        eventType: EventType.ADOPTION_REJECTED,
+        actorId: adminId,
+        payload: {
+          adoptionId,
+          petId: adoption.petId,
+          reason: dto.reason ?? null,
+        } satisfies Prisma.InputJsonValue,
+      });
 
       // Best-effort: enqueue notification email
       if (this.notificationQueueService && adoption.adopter.email) {

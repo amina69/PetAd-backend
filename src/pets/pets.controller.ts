@@ -221,8 +221,8 @@ export class PetsController {
   @ApiOperation({
     summary: 'Verify pet availability via event replay (admin only)',
     description:
-      'Replays the pet\'s event log to compute availability and compares it against the current DB state. ' +
-      'Returns a discrepancy report if the two differ.',
+      'Compares the persisted pet status with event replay and adoption/custody records. ' +
+      'Returns a discrepancy report if any status differs.',
   })
   @ApiParam({ name: 'id', description: 'Pet ID' })
   @ApiResponse({
@@ -231,8 +231,9 @@ export class PetsController {
     schema: {
       example: {
         petId: '550e8400-e29b-41d4-a716-446655440000',
+        storedStatus: 'AVAILABLE',
         replayedStatus: 'AVAILABLE',
-        dbAvailable: true,
+        computedStatus: 'AVAILABLE',
         isMatch: true,
         eventCount: 3,
         message: 'Pet availability is correctly synchronized',

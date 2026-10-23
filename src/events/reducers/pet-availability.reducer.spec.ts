@@ -40,6 +40,12 @@ describe('petAvailabilityReducer', () => {
     expect(result).toBe(PetStatus.PENDING);
   });
 
+  it('rejects adoption approval before an adoption request', () => {
+    expect(() =>
+      petAvailabilityReducer([{ eventType: 'ADOPTION_APPROVED' }]),
+    ).toThrow('Expected pet status PENDING, found AVAILABLE');
+  });
+
   it('should return ADOPTED after PET_LISTED → ADOPTION_REQUESTED → ADOPTION_APPROVED → ADOPTION_COMPLETED', () => {
     const events = [
       { eventType: 'PET_LISTED' },
@@ -51,9 +57,10 @@ describe('petAvailabilityReducer', () => {
     expect(result).toBe(PetStatus.ADOPTED);
   });
 
-  it('should return ADOPTED after PET_LISTED → PET_ADOPTED', () => {
+  it('should return ADOPTED after an adoption request is completed', () => {
     const events = [
       { eventType: 'PET_LISTED' },
+      { eventType: 'ADOPTION_REQUESTED' },
       { eventType: 'PET_ADOPTED' },
     ];
     const result = petAvailabilityReducer(events);
@@ -87,6 +94,15 @@ describe('petAvailabilityReducer', () => {
     const result = petAvailabilityReducer(events);
     expect(result).toBe(PetStatus.AVAILABLE);
   });
+
+  it.each(['CUSTODY_COMPLETED', 'PET_CUSTODY_CANCELLED'])(
+    'should return AVAILABLE after %s',
+    (eventType) => {
+      const events = [{ eventType: 'CUSTODY_STARTED' }, { eventType }];
+
+      expect(petAvailabilityReducer(events)).toBe(PetStatus.AVAILABLE);
+    },
+  );
 
   it('should return AVAILABLE after PET_LISTED → PET_CUSTODY_ACTIVE → PET_RETURNED', () => {
     const events = [

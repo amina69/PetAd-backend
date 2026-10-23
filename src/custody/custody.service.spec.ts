@@ -8,6 +8,7 @@ import { EscrowService } from '../escrow/escrow.service';
 import { UsersService } from '../users/users.service';
 import { NotificationQueueService } from '../jobs/services/notification-queue.service';
 import { CreateCustodyDto } from './dto/create-custody.dto';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 
 describe('CustodyService', () => {
   let service: CustodyService;
@@ -45,6 +46,10 @@ describe('CustodyService', () => {
     addJob: jest.fn(),
   };
 
+  const mockPetAvailabilityService = {
+    transition: jest.fn().mockResolvedValue('IN_CUSTODY'),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -69,6 +74,10 @@ describe('CustodyService', () => {
         {
           provide: NotificationQueueService,
           useValue: mockNotificationQueueService,
+        },
+        {
+          provide: PetAvailabilityService,
+          useValue: mockPetAvailabilityService,
         },
       ],
     }).compile();
@@ -725,6 +734,11 @@ describe('CustodyService', () => {
           depositAmount: 100,
         },
       });
+      expect(mockPetAvailabilityService.transition).toHaveBeenCalledWith(
+        'pet-123',
+        'IN_CUSTODY',
+        expect.any(Object),
+      );
     });
   });
 

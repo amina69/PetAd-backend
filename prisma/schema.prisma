@@ -29,6 +29,13 @@ enum PetSpecies {
   OTHER
 }
 
+enum PetStatus {
+  AVAILABLE
+  PENDING
+  IN_CUSTODY
+  ADOPTED
+}
+
 
 
 
@@ -87,6 +94,8 @@ enum EventType {
   PET_RETURNED
   ADOPTION_REQUESTED
   ADOPTION_APPROVED
+  ADOPTION_REJECTED
+  ADOPTION_CANCELLED
   ADOPTION_COMPLETED
   CUSTODY_CREATED
   CUSTODY_STARTED
@@ -167,6 +176,7 @@ model Pet {
   id          String      @id @default(uuid())
   name        String
   species     PetSpecies
+  status      PetStatus   @default(AVAILABLE)
   breed       String?
   age         Int?
   description String?
@@ -182,6 +192,7 @@ model Pet {
   custodies Custody[]
 
   @@index([species])
+  @@index([status])
   @@index([currentOwnerId])
   @@map("pets")
 }

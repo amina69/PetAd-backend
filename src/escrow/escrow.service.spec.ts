@@ -5,6 +5,7 @@ import { EventsService } from '../events/events.service';
 import { NotFoundException } from '@nestjs/common';
 import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 import { EscrowStatus, AdoptionStatus, EventType, EventEntityType } from '@prisma/client';
+import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 
 describe('EscrowService', () => {
     let service: EscrowService;
@@ -35,6 +36,10 @@ describe('EscrowService', () => {
         canTransition: jest.fn(),
     };
 
+    const mockPetAvailabilityService = {
+        transition: jest.fn().mockResolvedValue('ADOPTED'),
+    };
+
     beforeEach(async () => {
         jest.clearAllMocks();
 
@@ -44,6 +49,7 @@ describe('EscrowService', () => {
                 { provide: PrismaService, useValue: mockPrismaService },
                 { provide: EventsService, useValue: mockEventsService },
                 { provide: AdoptionStateMachine, useValue: mockAdoptionStateMachine },
+                { provide: PetAvailabilityService, useValue: mockPetAvailabilityService },
             ],
         }).compile();
 
@@ -133,6 +139,12 @@ describe('EscrowService', () => {
                 where: { id: mockAdoption.petId },
                 data: { currentOwnerId: mockAdoption.adopterId },
             });
+
+            expect(mockPetAvailabilityService.transition).toHaveBeenCalledWith(
+                mockAdoption.petId,
+                'ADOPTED',
+                mockPrismaService,
+            );
 
             expect(mockEventsService.logEvent).toHaveBeenCalledWith({
                 entityType: EventEntityType.ADOPTION,

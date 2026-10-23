@@ -9,6 +9,6 @@ import { PetMovementService } from './services/pet-movement.service';
   imports: [PrismaModule],
   controllers: [PetsController],
   providers: [PetsService, PetAvailabilityService, PetMovementService],
-  exports: [PetsService, PetMovementService],
+  exports: [PetsService, PetMovementService, PetAvailabilityService],
 })
 export class PetsModule {}

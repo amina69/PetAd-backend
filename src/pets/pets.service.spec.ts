@@ -15,6 +15,9 @@ const mockPrisma = {
     delete: jest.fn(),
     count: jest.fn(),
   },
+  adoption: { findMany: jest.fn() },
+  custody: { findMany: jest.fn() },
+  eventLog: { findMany: jest.fn() },
 };
 
 const mockAvailabilityService = {
@@ -220,5 +223,28 @@ describe('PetsService', () => {
     mockPrisma.pet.findUnique.mockResolvedValue(null);
 
     await expect(service.findOne('bad-id')).rejects.toThrow(NotFoundException);
+  });
+
+  describe('verifyAvailability', () => {
+    it('flags when stored status differs from event replay', async () => {
+      mockPrisma.pet.findUnique.mockResolvedValue({
+        id: 'pet-1',
+        status: 'ADOPTED',
+      });
+      mockPrisma.adoption.findMany.mockResolvedValue([]);
+      mockPrisma.custody.findMany.mockResolvedValue([]);
+      mockPrisma.eventLog.findMany.mockResolvedValue([]);
+      mockAvailabilityService.resolve.mockResolvedValue('AVAILABLE');
+
+      const result = await service.verifyAvailability('pet-1');
+
+      expect(result).toMatchObject({
+        storedStatus: 'ADOPTED',
+        replayedStatus: 'AVAILABLE',
+        computedStatus: 'AVAILABLE',
+        isMatch: false,
+      });
+      expect(result.discrepancy).toContain('stored pet status');
+    });
   });
 });
