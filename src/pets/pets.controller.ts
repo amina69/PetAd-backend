@@ -39,6 +39,7 @@ export class PetsController {
     private readonly petMovementService: PetMovementService,
   ) {}
 
+  // TODO(BE-033): Support multiple images per pet (multipart upload, reordering, cover selection) - #230
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SHELTER', 'ADMIN')
