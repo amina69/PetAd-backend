@@ -3,12 +3,14 @@ import type { ConfigService } from '@nestjs/config';
 export const NOTIFICATION_QUEUE_NAME = 'notifications';
 export const SEND_TRANSACTIONAL_EMAIL_JOB_NAME = 'send_transactional_email';
 
+export const DATA_EXPORT_QUEUE_NAME = 'data_export';
+export const PROCESS_DATA_EXPORT_JOB_NAME = 'process_data_export';
+export const CLEANUP_DATA_EXPORT_JOB_NAME = 'cleanup_data_export';
+
 export function getRedisConnection(configService: ConfigService) {
   const redisUrl = configService.get<string>('REDIS_URL');
   if (!redisUrl) {
-    throw new Error(
-      'Missing required env var `REDIS_URL` for BullMQ queues.',
-    );
+    throw new Error('Missing required env var `REDIS_URL` for BullMQ queues.');
   }
 
   return { url: redisUrl };
@@ -31,4 +33,3 @@ export function getJobBackoffDelay(configService: ConfigService): number {
   const parsed = raw ? Number.parseInt(raw, 10) : 5000;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5000;
 }
-

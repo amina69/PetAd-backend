@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { PublicProfileDto } from './dto/public-profile.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import {
   PaginatedResponseDto,
@@ -28,6 +29,81 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
   ) {}
+
+  async getPublicProfile(id: string): Promise<PublicProfileDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        avatarUrl: true,
+        role: true,
+        trustScore: true,
+        stellarPublicKey: true,
+        status: true,
+        deletedAt: true,
+        createdAt: true,
+      },
+    });
+
+    if (
+      !user ||
+      user.status === 'SUSPENDED' ||
+      user.status === 'DELETED' ||
+      user.deletedAt
+    ) {
+      throw new NotFoundException('User not found');
+    }
+
+    const first = user.firstName ? user.firstName.trim() : '';
+    const last = user.lastName ? user.lastName.trim() : '';
+    const lastInitial = last ? `${last.charAt(0).toUpperCase()}.` : '';
+    const displayName =
+      [first, lastInitial].filter(Boolean).join(' ') || 'Anonymous';
+
+    const verifiedBadges: string[] = [];
+    if (user.role === 'SHELTER') {
+      verifiedBadges.push('VERIFIED_SHELTER');
+    }
+    if (user.stellarPublicKey) {
+      verifiedBadges.push('STELLAR_VERIFIED');
+    }
+    if (user.trustScore && user.trustScore >= 80) {
+      verifiedBadges.push('TOP_RATED');
+    }
+
+    const [completedAdoptions, completedCustodies] = await Promise.all([
+      this.prisma.adoption.count({
+        where: {
+          status: 'COMPLETED',
+          OR: [{ adopterId: id }, { ownerId: id }],
+        },
+      }),
+      this.prisma.custody.count({
+        where: {
+          status: 'COMPLETED',
+          holderId: id,
+        },
+      }),
+    ]);
+    const completedAgreements = completedAdoptions + completedCustodies;
+
+    const ratingSummary = {
+      average: user.trustScore ? Number((user.trustScore / 20).toFixed(1)) : 0,
+      count: completedAgreements,
+    };
+
+    return {
+      id: user.id,
+      displayName,
+      avatarUrl: user.avatarUrl ?? null,
+      memberSince: user.createdAt.toISOString(),
+      verifiedBadges,
+      completedAgreements,
+      ratingSummary,
+    };
+  }
 
   async getProfile(id: string) {
     const user = await this.prisma.user.findUnique({
