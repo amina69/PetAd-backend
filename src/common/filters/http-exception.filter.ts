@@ -13,6 +13,7 @@ import crypto from 'crypto';
 import { ErrorCode } from '../exceptions/error-codes';
 import { ERROR_CODE_STATUS } from '../exceptions/error-codes';
 import { AppException } from '../exceptions/app.exception';
+import { LoggingService } from '../../logging/logging.service';
 
 /** Prisma error codes we map to structured HTTP errors. */
 const PRISMA_ERROR_CODES: Record<string, { status: number; code: ErrorCode }> = {
@@ -41,6 +42,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
+    private readonly loggingService: LoggingService,
   ) {
     this.isProduction =
       this.configService.get<string>('nodeEnv', 'development') === 'production';
@@ -61,6 +63,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const code = mapped.code;
     const message = mapped.message;
     const details = mapped.details;
+
+    // JwtStrategy populates `sub`; some callers still read `userId`.
+    const { user: requestUser } = request as unknown as {
+      user?: { sub?: string; userId?: string };
+    };
+
+    await this.loggingService.log({
+      level: 'ERROR',
+      action: 'HTTP_EXCEPTION',
+      message: typeof message === 'string' ? message : JSON.stringify(message),
+      userId: requestUser?.sub ?? requestUser?.userId,
+      metadata: {
+        statusCode: status,
+        path: request.url,
+        method: request.method,
+      },
+    });
 
     const body: StandardErrorResponse = {
       statusCode: status,
@@ -105,7 +124,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const response = exception.getResponse() as
-        | { message?: string | object; code?: string; error?: string }
+        | {
+            message?: string | object;
+            code?: string;
+            error?: string;
+            details?: unknown;
+            [key: string]: unknown;
+          }
         | string;
 
       let code: ErrorCode | string = this.statusToCode(status);
@@ -113,12 +138,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
       let details: unknown = undefined;
 
       if (typeof response === 'object' && response !== null) {
-        if (response.code) code = response.code;
+        if (typeof response.code === 'string') code = response.code;
         message = response.message ?? response.error ?? message;
         if (Array.isArray(response.message)) {
           // ValidationPipe details: array of constraint violations.
           details = response.message;
           message = 'Validation failed';
+        } else if (response.details !== undefined) {
+          details = response.details;
+        } else {
+          // Structured exceptions may carry extra machine-readable fields
+          // (e.g. `reasons` for blocked account deletion). Keep the standard
+          // envelope and expose those fields under `details`.
+          const extras = Object.keys(response).filter(
+            (key) =>
+              !['statusCode', 'code', 'message', 'error', 'details'].includes(
+                key,
+              ),
+          );
+          if (extras.length > 0) {
+            details = Object.fromEntries(
+              extras.map((key) => [key, response[key]]),
+            );
+          }
         }
       } else if (typeof response === 'string') {
         message = response;

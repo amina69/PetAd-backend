@@ -6,6 +6,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
@@ -100,7 +101,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
-    if (!user) {
+    if (!user || user.status === UserStatus.DELETED) {
       throw new UnauthorizedException('User not found');
     }
     return {
@@ -197,12 +198,14 @@ async login(dto: LoginDto, userAgent?: string, ip?: string) {
       where: { email: dto.email },
     });
 
-    if (!user) {
+    if (!user || user.status === UserStatus.DELETED) {
       this.recordFailedAttempt(key);
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+    // Anonymised accounts have their password hash removed.
+    const isPasswordValid =
+      !!user.password && (await bcrypt.compare(dto.password, user.password));
 
     if (!isPasswordValid) {
       this.recordFailedAttempt(key);
