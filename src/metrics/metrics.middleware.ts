@@ -14,8 +14,11 @@ export function httpMetricsMiddleware(metrics: MetricsService) {
       const template = matched?.path;
       // Nest registers controller routes with their complete API prefix.
       const path = typeof template === 'string' ? template : 'unmatched';
+      const method = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(request.method)
+        ? request.method
+        : 'OTHER';
       const labels = {
-        method: request.method,
+        method,
         route: path || '/',
         status: String(response.statusCode),
       };
