@@ -16,7 +16,6 @@ import {
   getRedisConnection,
 } from '../../jobs/queues/queue.config';
 import { DataExportService } from './data-export.service';
-import { MetricsService } from '../../metrics/metrics.service';
 
 export interface DataExportJobPayload {
   exportId: string;
@@ -30,7 +29,6 @@ export class DataExportQueueService implements OnModuleDestroy {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly metrics: MetricsService,
     @Optional()
     @Inject(forwardRef(() => DataExportService))
     private readonly dataExportService?: DataExportService,
@@ -70,12 +68,6 @@ export class DataExportQueueService implements OnModuleDestroy {
           });
       });
     }
-  }
-
-  async collectMetrics(): Promise<void> {
-    if (!this.queue) return;
-    const counts = await this.queue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed');
-    this.metrics.setQueueStats(DATA_EXPORT_QUEUE_NAME, counts);
   }
 
   async onModuleDestroy(): Promise<void> {
