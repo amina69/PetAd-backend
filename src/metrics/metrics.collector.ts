@@ -55,8 +55,7 @@ export class MetricsCollector {
   }
 
   private async collectDatabase(): Promise<void> {
-    // PostgreSQL reports per-database connections; it is not a process-local
-    // adapter pool statistic. Export this honestly as a database-level gauge.
+    // Database-wide connections, not a per-process pool count.
     const rows = await this.prisma.$queryRaw<Array<{ connections: bigint }>>`
       SELECT COUNT(*)::bigint AS connections
       FROM pg_stat_activity WHERE datname = current_database()
