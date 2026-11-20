@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Queue } from 'bullmq';
+import { ConfigService } from '@nestjs/config';
+import { DATA_EXPORT_QUEUE_NAME, NOTIFICATION_QUEUE_NAME, getRedisConnection } from '../jobs/queues/queue.config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from './metrics.service';
-import { NotificationQueueService } from '../jobs/services/notification-queue.service';
-import { DataExportQueueService } from '../users/data-export/data-export-queue.service';
 
 /** Refresh snapshot gauges before each scrape; never expose individual records. */
 @Injectable()
@@ -12,22 +13,33 @@ export class MetricsCollector {
   constructor(
     private readonly prisma: PrismaService,
     private readonly metrics: MetricsService,
-    private readonly notifications: NotificationQueueService,
-    private readonly exports: DataExportQueueService,
+    private readonly config: ConfigService,
   ) {}
 
   async collect(): Promise<void> {
     const tasks = [
       this.collectEscrows(),
       this.collectDatabase(),
-      this.notifications.collectMetrics(),
-      this.exports.collectMetrics(),
+      this.collectQueues(),
       this.collectAnchoringLag(),
     ];
     const results = await Promise.allSettled(tasks);
     for (const result of results) {
       if (result.status === 'rejected') {
         this.logger.warn('One metrics collector failed; serving available metrics');
+      }
+    }
+  }
+
+  private async collectQueues(): Promise<void> {
+    const connection = getRedisConnection(this.config);
+    for (const name of [NOTIFICATION_QUEUE_NAME, DATA_EXPORT_QUEUE_NAME] as const) {
+      const queue = new Queue(name, { connection });
+      try {
+        const counts = await queue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed');
+        this.metrics.setQueueStats(name, counts);
+      } finally {
+        await queue.close();
       }
     }
   }
