@@ -24,7 +24,7 @@ scrape_configs:
 
 - `petad_http_request_duration_seconds`: histogram labeled by HTTP method, **matched route template**, status.
 - `petad_http_requests_total`: counter with the same bounded labels.
-- `petad_db_connections`: PostgreSQL connections to the application database (database-wide, not the Prisma driver's private local pool).
+- `petad_db_pool_connections`: actual Prisma PostgreSQL driver pool statistics (total, idle, waiting).
 - `petad_queue_jobs`: BullMQ counts for the fixed `notifications` and `data_export` queues, by waiting/active/delayed/completed/failed state.
 - `petad_escrow_states`: Prisma escrow totals by the finite `EscrowStatus` enum.
 - `petad_anchoring_lag_seconds`: age of the oldest ledger event with no `txHash`; zero when none exists. This is a proxy for pending anchoring and assumes events without a hash are candidates for anchoring. When a dedicated anchoring pipeline exists, replace with its canonical lag source.
