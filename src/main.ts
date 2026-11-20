@@ -15,6 +15,7 @@ import { validateEnv } from './config/env.validation';
 import { MetricsService } from './metrics/metrics.service';
 import { httpMetricsMiddleware } from './metrics/metrics.middleware';
 import { metricsBasicAuth } from './metrics/metrics.auth';
+import { MetricsCollector } from './metrics/metrics.collector';
 
 // Load .env, then fail fast if the environment is invalid. Secret values
 // are validated but never surfaced in error messages (see env.validation).
@@ -48,6 +49,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const metrics = app.get(MetricsService);
+  const collector = app.get(MetricsCollector);
   // Authenticate before any HTTP route can serve /metrics, regardless of prefix.
   app.use('/metrics', metricsBasicAuth(
     configService.get<string>('metrics.username'),
@@ -55,6 +57,7 @@ async function bootstrap() {
   ));
   app.getHttpAdapter().get('/metrics', async (_req, res) => {
     try {
+      await collector.collect();
       const body = await metrics.registry.metrics();
       res.setHeader('Content-Type', metrics.registry.contentType);
       res.end(body);
