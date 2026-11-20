@@ -7,9 +7,9 @@ describe('Prometheus metrics', () => {
     const metrics = new MetricsService();
     const handler = httpMetricsMiddleware(metrics);
     const listeners: Record<string, () => void> = {};
-    const req = { path: '/api/v1/pets/pet-123', baseUrl: '/api/v1', method: 'GET' } as any;
+    const req = { path: '/api/v1/pets/pet-123', route: { path: '/api/v1/pets/:id' }, method: 'GET' } as any;
     const res = {
-      req: { route: { path: '/pets/:id' } },
+      req,
       statusCode: 200,
       once: (event: string, cb: () => void) => { listeners[event] = cb; },
     } as any;
