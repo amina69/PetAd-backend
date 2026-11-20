@@ -9,7 +9,6 @@ import {
   getJobBackoffDelay,
   getRedisConnection,
 } from '../queues/queue.config';
-import { MetricsService } from '../../metrics/metrics.service';
 import type { SendTransactionalEmailDto } from '../../email/dto/send-transactional-email.dto';
 
 export type SendTransactionalEmailJobInput = {
@@ -21,7 +20,7 @@ export type SendTransactionalEmailJobInput = {
 export class NotificationQueueService implements OnModuleDestroy {
   private readonly queue: Queue<SendTransactionalEmailJobInput>;
 
-  constructor(private readonly configService: ConfigService, private readonly metrics: MetricsService) {
+  constructor(private readonly configService: ConfigService) {
     const connection = getRedisConnection(configService);
     const attempts = getJobAttempts(configService);
     const backoffDelay = getJobBackoffDelay(configService);
@@ -44,11 +43,6 @@ export class NotificationQueueService implements OnModuleDestroy {
       SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
       input,
     );
-  }
-
-  async collectMetrics(): Promise<void> {
-    const counts = await this.queue.getJobCounts('waiting', 'active', 'delayed', 'completed', 'failed');
-    this.metrics.setQueueStats(NOTIFICATION_QUEUE_NAME, counts);
   }
 
   async onModuleDestroy(): Promise<void> {
