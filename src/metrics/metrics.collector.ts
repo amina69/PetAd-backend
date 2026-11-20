@@ -49,11 +49,7 @@ export class MetricsCollector {
       SELECT COUNT(*)::bigint AS connections
       FROM pg_stat_activity WHERE datname = current_database()
     `;
-    this.metrics.setDbPoolStats({
-      totalCount: Number(rows[0]?.connections ?? 0),
-      idleCount: 0,
-      waitingCount: 0,
-    });
+    this.metrics.setDbConnections(Number(rows[0]?.connections ?? 0));
   }
 
   private async collectAnchoringLag(): Promise<void> {
