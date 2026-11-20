@@ -55,12 +55,7 @@ export class MetricsCollector {
   }
 
   private async collectDatabase(): Promise<void> {
-    // Database-wide connections, not a per-process pool count.
-    const rows = await this.prisma.$queryRaw<Array<{ connections: bigint }>>`
-      SELECT COUNT(*)::bigint AS connections
-      FROM pg_stat_activity WHERE datname = current_database()
-    `;
-    this.metrics.setDbConnections(Number(rows[0]?.connections ?? 0));
+    this.metrics.setDbPoolStats(this.prisma.getPoolStats());
   }
 
   private async collectAnchoringLag(): Promise<void> {
