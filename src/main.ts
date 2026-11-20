@@ -12,6 +12,9 @@ import { ErrorResponseDto } from './common/dto/error-response.dto';
 import { ErrorDetailDto } from './common/dto/error-response.dto';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { validateEnv } from './config/env.validation';
+import { MetricsService } from './metrics/metrics.service';
+import { httpMetricsMiddleware } from './metrics/metrics.middleware';
+import { metricsBasicAuth } from './metrics/metrics.auth';
 
 // Load .env, then fail fast if the environment is invalid. Secret values
 // are validated but never surfaced in error messages (see env.validation).
@@ -44,6 +47,23 @@ async function bootstrap() {
   // TODO(#204): Coordinate graceful shutdown of Prisma, Redis, and job workers.
 
   const configService = app.get(ConfigService);
+  const metrics = app.get(MetricsService);
+  // Authenticate before any HTTP route can serve /metrics, regardless of prefix.
+  app.use('/metrics', metricsBasicAuth(
+    configService.get<string>('metrics.username'),
+    configService.get<string>('metrics.password'),
+  ));
+  app.getHttpAdapter().get('/metrics', async (_req, res) => {
+    try {
+      const body = await metrics.registry.metrics();
+      res.setHeader('Content-Type', metrics.registry.contentType);
+      res.end(body);
+    } catch {
+      res.statusCode = 503;
+      res.end('Metrics temporarily unavailable');
+    }
+  });
+  app.use(httpMetricsMiddleware(metrics));
 
   // All configuration is read through ConfigService (typed via configuration.ts).
   const port = configService.get<number>('port', 3000);
@@ -122,7 +142,7 @@ async function bootstrap() {
   app.useLogger(new AppLogger());
 
   // 9. Global API prefix. `/health` is excluded so it stays at root level.
-  app.setGlobalPrefix(API_PREFIX, { exclude: ['health'] });
+  app.setGlobalPrefix(API_PREFIX, { exclude: ['health', 'metrics'] });
 
   // 10. Swagger at root-level /api, intentionally not under the API prefix.
   const documentConfig = new DocumentBuilder()
