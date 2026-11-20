@@ -172,6 +172,6 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
-  METRICS_USERNAME: Joi.string().min(1).optional(),
-  METRICS_PASSWORD: Joi.string().min(16).optional(),
+  METRICS_USERNAME: Joi.string().empty('').min(1).optional(),
+  METRICS_PASSWORD: Joi.string().empty('').min(16).optional(),
 }).options({ abortEarly: false, allowUnknown: true });
