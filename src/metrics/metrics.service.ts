@@ -24,9 +24,10 @@ export class MetricsService {
     labelNames: ['method', 'route', 'status'] as const,
     registers: [this.registry],
   });
-  readonly dbConnections = new Gauge({
-    name: 'petad_db_connections',
-    help: 'Current connections to the application PostgreSQL database',
+  readonly dbPool = new Gauge({
+    name: 'petad_db_pool_connections',
+    help: 'Prisma PostgreSQL driver pool statistics',
+    labelNames: ['state'] as const,
     registers: [this.registry],
   });
   readonly queueJobs = new Gauge({
@@ -85,8 +86,10 @@ export class MetricsService {
     }
   }
 
-  setDbConnections(count: number): void {
-    this.dbConnections.set(count);
+  setDbPoolStats(stats: { totalCount: number; idleCount: number; waitingCount: number }): void {
+    this.dbPool.set({ state: 'total' }, stats.totalCount);
+    this.dbPool.set({ state: 'idle' }, stats.idleCount);
+    this.dbPool.set({ state: 'waiting' }, stats.waitingCount);
   }
 
   setQueueStats(queue: 'notifications' | 'data_export', counts: Partial<Record<QueueState, number>>): void {
