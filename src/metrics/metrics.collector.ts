@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { EventType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { DATA_EXPORT_QUEUE_NAME, NOTIFICATION_QUEUE_NAME, getRedisConnection } from '../jobs/queues/queue.config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -60,7 +61,10 @@ export class MetricsCollector {
 
   private async collectAnchoringLag(): Promise<void> {
     const oldest = await this.prisma.eventLog.findFirst({
-      where: { txHash: null },
+      where: {
+        txHash: null,
+        eventType: { in: [EventType.ESCROW_FUNDED, EventType.ESCROW_RELEASED, EventType.ESCROW_REFUNDED] },
+      },
       orderBy: { createdAt: 'asc' },
       select: { createdAt: true },
     });
