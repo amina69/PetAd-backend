@@ -1,0 +1,3278 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/protected": {
+      "get": {
+        "operationId": "AppController_getProtected",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/v1/pets": {
+      "post": {
+        "operationId": "PetsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pet created successfully"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Create new pet listing",
+        "tags": [
+          "Pets"
+        ]
+      },
+      "get": {
+        "description": "Returns paginated list of pets with optional filtering and computed availability. Listings owned by suspended accounts are omitted for anonymous and non-admin callers.",
+        "operationId": "PetsController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "species",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DOG",
+                "CAT",
+                "BIRD",
+                "RABBIT",
+                "OTHER"
+              ]
+            }
+          },
+          {
+            "name": "gender",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "MALE",
+                "FEMALE"
+              ]
+            }
+          },
+          {
+            "name": "size",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SMALL",
+                "MEDIUM",
+                "LARGE"
+              ]
+            }
+          },
+          {
+            "name": "breed",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "near",
+            "required": false,
+            "in": "query",
+            "description": "Centre point for a radius search, formatted as \"latitude,longitude\". When supplied, results are limited to the radius (see `radius`), sorted nearest-first and each item includes `distanceKm`. Latitude must be in [-90, 90], longitude in [-180, 180].",
+            "schema": {
+              "example": "52.5200,13.4050",
+              "type": "string"
+            }
+          },
+          {
+            "name": "radius",
+            "required": false,
+            "in": "query",
+            "description": "Search radius in kilometres, only applied when `near` is supplied. Minimum 0.1 km; capped at 200 km; defaults to 10 km when omitted.",
+            "schema": {
+              "minimum": 0.1,
+              "example": 25,
+              "type": "number"
+            }
+          },
+          {
+            "name": "minAge",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxAge",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated pets list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "data": [
+                      {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "name": "Buddy",
+                        "species": "DOG",
+                        "breed": "Golden Retriever",
+                        "age": 3,
+                        "isAvailable": true,
+                        "currentOwnerId": "550e8400-e29b-41d4-a716-446655440001"
+                      }
+                    ],
+                    "meta": {
+                      "page": 1,
+                      "limit": 20,
+                      "total": 150,
+                      "totalPages": 8,
+                      "hasNextPage": true,
+                      "hasPreviousPage": false
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List pets with pagination and filtering",
+        "tags": [
+          "Pets"
+        ]
+      }
+    },
+    "/api/v1/pets/{id}": {
+      "get": {
+        "description": "Retrieve detailed information about a specific pet including computed availability",
+        "operationId": "PetsController_getPet",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pet found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "id": "550e8400-e29b-41d4-a716-446655440000",
+                    "name": "Buddy",
+                    "species": "DOG",
+                    "breed": "Golden Retriever",
+                    "age": 3,
+                    "isAvailable": true,
+                    "currentOwnerId": "550e8400-e29b-41d4-a716-446655440001"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        },
+        "summary": "Get pet details",
+        "tags": [
+          "Pets"
+        ]
+      },
+      "patch": {
+        "operationId": "PetsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pet updated successfully"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Update pet information",
+        "tags": [
+          "Pets"
+        ]
+      },
+      "delete": {
+        "operationId": "PetsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pet deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "message": "Pet deleted successfully"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin only"
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Remove pet listing (admin only)",
+        "tags": [
+          "Pets"
+        ]
+      }
+    },
+    "/api/v1/pets/{id}/history": {
+      "get": {
+        "description": "Returns the complete movement history of a pet — every adoption and custody event in chronological order. Public endpoint (no auth required).",
+        "operationId": "PetsController_getMovementHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pet movement history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "petId": "550e8400-e29b-41d4-a716-446655440000",
+                    "petName": "Buddy",
+                    "timeline": [
+                      {
+                        "eventType": "CUSTODY_STARTED",
+                        "summary": "Custody started",
+                        "occurredAt": "2024-01-01T00:00:00.000Z",
+                        "stellarTxHash": "stellar-tx-hash-abc",
+                        "anchorStatus": "ANCHORED"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        },
+        "summary": "Get pet movement timeline",
+        "tags": [
+          "Pets"
+        ]
+      }
+    },
+    "/api/v1/pets/{id}/availability/verify": {
+      "get": {
+        "description": "Replays the pet's event log to compute availability and compares it against the current DB state. Returns a discrepancy report if the two differ.",
+        "operationId": "PetsController_verifyAvailability",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Availability verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "petId": "550e8400-e29b-41d4-a716-446655440000",
+                    "storedStatus": "AVAILABLE",
+                    "replayedStatus": "AVAILABLE",
+                    "computedStatus": "AVAILABLE",
+                    "isMatch": true,
+                    "eventCount": 3,
+                    "message": "Pet availability is correctly synchronized"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin only"
+          },
+          "404": {
+            "description": "Pet not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Verify pet availability via event replay (admin only)",
+        "tags": [
+          "Pets"
+        ]
+      }
+    },
+    "/api/v1/adoption/requests": {
+      "post": {
+        "operationId": "AdoptionController_requestAdoption",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdoptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption/{id}/approve": {
+      "patch": {
+        "operationId": "AdoptionController_approveAdoption",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Adoption approved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin role required"
+          },
+          "404": {
+            "description": "Adoption not found"
+          },
+          "422": {
+            "description": "Invalid status transition"
+          }
+        },
+        "summary": "Approve a pending adoption request (Admin only)",
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption/{id}/reject": {
+      "patch": {
+        "operationId": "AdoptionController_rejectAdoption",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectAdoptionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Adoption rejected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - Admin role required"
+          },
+          "404": {
+            "description": "Adoption not found"
+          },
+          "422": {
+            "description": "Invalid status transition"
+          }
+        },
+        "summary": "Reject a pending adoption request (Admin only)",
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption/{id}/complete": {
+      "patch": {
+        "operationId": "AdoptionController_completeAdoption",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption/{id}/documents": {
+      "post": {
+        "operationId": "AdoptionController_uploadDocuments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption/{id}": {
+      "get": {
+        "operationId": "AdoptionController_getAdoption",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Adoption found"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "summary": "Get one adoption (participant or admin only)",
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/adoption": {
+      "get": {
+        "operationId": "AdoptionController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filter by adoption status",
+            "schema": {
+              "enum": [
+                "REQUESTED",
+                "PENDING",
+                "APPROVED",
+                "ESCROW_FUNDED",
+                "COMPLETED",
+                "REJECTED",
+                "CANCELLED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "petId",
+            "required": false,
+            "in": "query",
+            "description": "Filter by pet ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of adoptions"
+          }
+        },
+        "summary": "Get all adoptions for the current user based on role",
+        "tags": [
+          "Adoption"
+        ]
+      }
+    },
+    "/api/v1/documents/{id}": {
+      "get": {
+        "description": "Readable by its uploader, the parties of the related adoption, or an admin. Any other caller gets 404 so the document is not disclosed.",
+        "operationId": "DocumentsController_getDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Document ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get a document",
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/admin/event-ledger/{aggregateId}/events": {
+      "get": {
+        "operationId": "EventLedgerController_getAggregateEvents",
+        "parameters": [
+          {
+            "name": "aggregateId",
+            "required": true,
+            "in": "path",
+            "description": "Aggregate entity ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of events for the aggregate"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get all events for an aggregate",
+        "tags": [
+          "Event Ledger"
+        ]
+      }
+    },
+    "/api/v1/admin/event-ledger/{aggregateId}/integrity": {
+      "get": {
+        "operationId": "EventLedgerController_checkIntegrity",
+        "parameters": [
+          {
+            "name": "aggregateId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "EventLedger"
+        ]
+      }
+    },
+    "/api/v1/admin/event-ledger/type/{aggregateType}": {
+      "get": {
+        "operationId": "EventLedgerController_getEventsByAggregateType",
+        "parameters": [
+          {
+            "name": "aggregateType",
+            "required": true,
+            "in": "path",
+            "description": "Aggregate type (e.g., PET, ADOPTION)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of events for the aggregate type"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get events by aggregate type",
+        "tags": [
+          "Event Ledger"
+        ]
+      }
+    },
+    "/api/v1/admin/event-ledger/event-type/{eventType}": {
+      "get": {
+        "operationId": "EventLedgerController_getEventsByEventType",
+        "parameters": [
+          {
+            "name": "eventType",
+            "required": true,
+            "in": "path",
+            "description": "Event type (e.g., ADOPTION_APPROVED)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of events matching the type"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get events by event type",
+        "tags": [
+          "Event Ledger"
+        ]
+      }
+    },
+    "/api/v1/analytics/adoptions/funnel": {
+      "get": {
+        "operationId": "AnalyticsController_getAdoptionFunnel",
+        "parameters": [
+          {
+            "name": "windowDays",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 3650,
+              "default": 365,
+              "type": "number"
+            }
+          },
+          {
+            "name": "expiredAfterDays",
+            "required": false,
+            "in": "query",
+            "description": "Days without completion before a request is counted as expired",
+            "schema": {
+              "minimum": 1,
+              "maximum": 3650,
+              "default": 30,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdoptionFunnelDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Adoption funnel, conversion, drop-offs and stage medians",
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/projections": {
+      "get": {
+        "operationId": "AnalyticsController_getProjectionState",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Daily aggregate refresh state and lag",
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/projections/rebuild": {
+      "post": {
+        "operationId": "AnalyticsController_rebuildProjections",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectionStateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Rebuild all daily aggregates from the event ledger",
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/api/v1/custody": {
+      "post": {
+        "description": "Request temporary custody of an available pet for a specified time period with optional deposit",
+        "operationId": "CustodyController_createCustody",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustodyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Custody agreement successfully created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustodyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Pet unavailable, invalid dates, or validation errors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 400,
+                    "message": "Pet already has an active custody agreement",
+                    "error": "Bad Request"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid JWT token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 401,
+                    "message": "Unauthorized"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found - Pet does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "statusCode": 404,
+                    "message": "Pet with id {petId} not found",
+                    "error": "Not Found"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a custody agreement",
+        "tags": [
+          "custody"
+        ]
+      }
+    },
+    "/api/v1/custody/{id}/return": {
+      "post": {
+        "description": "End custody agreement successfully. Releases escrow and updates trust score positively",
+        "operationId": "CustodyController_returnCustody",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Custody successfully returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustodyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Custody not active"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Return custody agreement",
+        "tags": [
+          "custody"
+        ]
+      }
+    },
+    "/api/v1/custody/{id}/violation": {
+      "post": {
+        "description": "Report custody violation. Refunds escrow and penalizes trust score",
+        "operationId": "CustodyController_violationCustody",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Custody marked as violation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustodyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - Custody not active"
+          },
+          "404": {
+            "description": "Resource not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark custody as violation",
+        "tags": [
+          "custody"
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "operationId": "UsersController_listUsers",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search by email or name (case-insensitive)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USER",
+                "ADMIN",
+                "SHELTER"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "SUSPENDED",
+                "DELETED"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "description": "Sort field and order, e.g. createdAt:desc or createdAt:asc",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "List users (Admin only)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/me/data-export": {
+      "post": {
+        "operationId": "UsersController_requestDataExport",
+        "parameters": [],
+        "responses": {
+          "202": {
+            "description": "Export request accepted and enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportInitiatedDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Active export request already in progress"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Request personal data export (async)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/me/data-export/{id}": {
+      "get": {
+        "operationId": "UsersController_getDataExportStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportStatusResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Export request not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get personal data export status and signed download URL",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/me/data-export/{id}/download": {
+      "get": {
+        "operationId": "UsersController_downloadDataExport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expires",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sig",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP archive download stream"
+          },
+          "404": {
+            "description": "Export file not found"
+          },
+          "410": {
+            "description": "Link expired or file purged"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Download personal data export ZIP archive via short-lived signed link",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/public": {
+      "get": {
+        "operationId": "UsersController_getPublicProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public profile retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfileDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found or suspended/deleted"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get public user profile",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}": {
+      "get": {
+        "operationId": "UsersController_getProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get user profile",
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "description": "Only firstName, lastName, phone, bio and location can be changed. Email, role and trustScore are rejected.",
+        "operationId": "UsersController_updateProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Unknown or read-only field"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Update own profile",
+        "tags": [
+          "Users"
+        ]
+      },
+      "delete": {
+        "description": "Soft-deletes the account and anonymises all personal data. Blocked with code ACCOUNT_DELETION_BLOCKED while the user has an active custody, an open dispute or a funded escrow. Deleting your own account requires password re-authentication.",
+        "operationId": "UsersController_deleteProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "401": {
+            "description": "Wrong password"
+          },
+          "409": {
+            "description": "ACCOUNT_DELETION_BLOCKED (with reasons) or ACCOUNT_ALREADY_DELETED"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Delete an account",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/avatar": {
+      "post": {
+        "description": "JPEG, PNG or WebP up to 5 MB. The file type is verified from its magic bytes; SVG and renamed binaries are rejected with 415. Cloudinary re-encodes the image and strips EXIF metadata.",
+        "operationId": "UsersController_uploadAvatar",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "415": {
+            "description": "Unsupported image format"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Upload an avatar",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/suspend": {
+      "post": {
+        "description": "Blocks the account immediately: the suspended user cannot authenticate with an existing token and their pet listings are removed from public search.",
+        "operationId": "UsersController_suspend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User suspended"
+          },
+          "403": {
+            "description": "Forbidden - Admin only"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "description": "User is already suspended"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Suspend a user account (Admin only)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/users/{id}/reinstate": {
+      "post": {
+        "description": "Restores ACTIVE status, clears suspension metadata and lets the user authenticate and list pets again.",
+        "operationId": "UsersController_reinstate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User reinstated"
+          },
+          "403": {
+            "description": "Forbidden - Admin only"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "description": "User is not suspended"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Reinstate a suspended user account (Admin only)",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User successfully registered"
+          },
+          "409": {
+            "description": "Email already registered"
+          }
+        },
+        "summary": "Register a new user",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Login successful"
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Token refreshed successfully"
+          },
+          "401": {
+            "description": "Invalid or reused refresh token"
+          }
+        },
+        "summary": "Refresh access token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current user profile"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get current user profile",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Logged out successfully"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/forgot": {
+      "post": {
+        "operationId": "AuthController_forgotPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Password reset request accepted"
+          }
+        },
+        "summary": "Request password reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset": {
+      "post": {
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset successful"
+          },
+          "400": {
+            "description": "Invalid or expired token"
+          }
+        },
+        "summary": "Reset password using reset token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/admin/replay/{aggregateId}": {
+      "post": {
+        "description": "Reconstructs the aggregate state from its event log and compares it against the current DB state. By default runs as a dry run (no DB writes). Pass `dryRun: false` together with `confirm: true` to apply the reconstructed state. Every invocation is audit-logged.",
+        "operationId": "AdminController_replayAggregate",
+        "parameters": [
+          {
+            "name": "aggregateId",
+            "required": true,
+            "in": "path",
+            "description": "The ID of the aggregate to replay.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayEventsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replay result (or applied state when dryRun is false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventReplayResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request - missing confirm flag"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden - Admin role required"
+          },
+          "404": {
+            "description": "No events found for the supplied aggregateId"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Replay an aggregate from its event log (admin only)",
+        "tags": [
+          "admin"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Pet Adoption API",
+    "description": "API documentation for the Pet Adoption platform",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "JWT-auth": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "CreatePetDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Pet name"
+          },
+          "species": {
+            "type": "string",
+            "enum": [
+              "DOG",
+              "CAT",
+              "BIRD",
+              "RABBIT",
+              "OTHER"
+            ],
+            "description": "Species (e.g., DOG, CAT)"
+          },
+          "breed": {
+            "type": "string",
+            "description": "Breed"
+          },
+          "age": {
+            "type": "number",
+            "description": "Age in years"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "description": "Gender"
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "SMALL",
+              "MEDIUM",
+              "LARGE"
+            ],
+            "description": "Size"
+          },
+          "color": {
+            "type": "string",
+            "description": "Color"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description"
+          },
+          "images": {
+            "description": "Image URLs",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "city": {
+            "type": "string",
+            "description": "City where the pet is located (coarse, safe to expose)",
+            "example": "Berlin"
+          },
+          "state": {
+            "type": "string",
+            "description": "State / province / region where the pet is located",
+            "example": "Berlin"
+          },
+          "country": {
+            "type": "string",
+            "description": "Country where the pet is located",
+            "example": "Germany"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "Listing latitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.",
+            "example": 52.52
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Listing longitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.",
+            "example": 13.405
+          }
+        },
+        "required": [
+          "name",
+          "species"
+        ]
+      },
+      "UpdatePetDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Pet name"
+          },
+          "species": {
+            "type": "string",
+            "enum": [
+              "DOG",
+              "CAT",
+              "BIRD",
+              "RABBIT",
+              "OTHER"
+            ],
+            "description": "Species (e.g., DOG, CAT)"
+          },
+          "breed": {
+            "type": "string",
+            "description": "Breed"
+          },
+          "age": {
+            "type": "number",
+            "description": "Age in years"
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "MALE",
+              "FEMALE"
+            ],
+            "description": "Gender"
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "SMALL",
+              "MEDIUM",
+              "LARGE"
+            ],
+            "description": "Size"
+          },
+          "color": {
+            "type": "string",
+            "description": "Color"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description"
+          },
+          "images": {
+            "description": "Image URLs",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "city": {
+            "type": "string",
+            "description": "City where the pet is located (coarse, safe to expose)",
+            "example": "Berlin"
+          },
+          "state": {
+            "type": "string",
+            "description": "State / province / region where the pet is located",
+            "example": "Berlin"
+          },
+          "country": {
+            "type": "string",
+            "description": "Country where the pet is located",
+            "example": "Germany"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "Listing latitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.",
+            "example": 52.52
+          },
+          "longitude": {
+            "type": "number",
+            "description": "Listing longitude. Stored rounded to ~100 m (3 decimal places) so an owner’s exact address is never persisted.",
+            "example": 13.405
+          }
+        }
+      },
+      "CreateAdoptionDto": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "string",
+            "example": "uuid-of-pet"
+          },
+          "notes": {
+            "type": "string",
+            "example": "I would love to adopt this pet"
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "ApprovalPetDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Buddy"
+          },
+          "species": {
+            "type": "string",
+            "example": "DOG"
+          },
+          "imageUrl": {
+            "type": "object",
+            "nullable": true,
+            "example": "https://example.com/buddy.jpg"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "species"
+        ]
+      },
+      "ApprovalPartyDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "firstName": {
+            "type": "string",
+            "example": "Jane"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "email": {
+            "type": "string",
+            "example": "jane@example.com"
+          }
+        },
+        "required": [
+          "id",
+          "firstName",
+          "lastName",
+          "email"
+        ]
+      },
+      "ApprovalResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "APPROVED",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "notes": {
+            "type": "object",
+            "nullable": true,
+            "example": "Looks good"
+          },
+          "petId": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "adopterId": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "ownerId": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "escrowId": {
+            "type": "object",
+            "nullable": true,
+            "example": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z"
+          },
+          "pet": {
+            "$ref": "#/components/schemas/ApprovalPetDto"
+          },
+          "adopter": {
+            "$ref": "#/components/schemas/ApprovalPartyDto"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/ApprovalPartyDto"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "petId",
+          "adopterId",
+          "ownerId",
+          "createdAt",
+          "updatedAt",
+          "pet",
+          "adopter",
+          "owner"
+        ]
+      },
+      "RejectAdoptionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Optional reason for rejecting the adoption request",
+            "example": "Incomplete documentation",
+            "maxLength": 500
+          }
+        }
+      },
+      "FunnelStageDto": {
+        "type": "object",
+        "properties": {
+          "stage": {
+            "type": "string",
+            "example": "REQUESTED"
+          },
+          "count": {
+            "type": "number",
+            "example": 100
+          },
+          "conversionRate": {
+            "type": "number",
+            "example": 100,
+            "description": "Percentage of the REQUESTED stage"
+          }
+        },
+        "required": [
+          "stage",
+          "count",
+          "conversionRate"
+        ]
+      },
+      "DropOffReasonDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "example": "REJECTED"
+          },
+          "count": {
+            "type": "number",
+            "example": 10
+          },
+          "rate": {
+            "type": "number",
+            "example": 10
+          }
+        },
+        "required": [
+          "reason",
+          "count",
+          "rate"
+        ]
+      },
+      "StageMedianDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "example": "REQUESTED"
+          },
+          "to": {
+            "type": "string",
+            "example": "APPROVED"
+          },
+          "medianDays": {
+            "type": "object",
+            "example": 1.5,
+            "nullable": true,
+            "description": "Median days between the two stages, computed in SQL"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "medianDays"
+        ]
+      },
+      "AdoptionBreakdownDto": {
+        "type": "object",
+        "properties": {
+          "species": {
+            "type": "string",
+            "example": "DOG"
+          },
+          "ageBand": {
+            "type": "string",
+            "example": "ADULT"
+          },
+          "size": {
+            "type": "string",
+            "example": "MEDIUM"
+          },
+          "requested": {
+            "type": "number",
+            "example": 10
+          },
+          "completed": {
+            "type": "number",
+            "example": 4
+          },
+          "completionRate": {
+            "type": "number",
+            "example": 40
+          }
+        },
+        "required": [
+          "species",
+          "ageBand",
+          "size",
+          "requested",
+          "completed",
+          "completionRate"
+        ]
+      },
+      "AdoptionSuccessDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number",
+            "example": 100
+          },
+          "successful": {
+            "type": "number",
+            "example": 92
+          },
+          "definition": {
+            "type": "string",
+            "example": "Completed and not returned/cancelled within 30 days"
+          }
+        },
+        "required": [
+          "completed",
+          "successful",
+          "definition"
+        ]
+      },
+      "AdoptionFunnelDto": {
+        "type": "object",
+        "properties": {
+          "windowDays": {
+            "type": "number",
+            "example": 365
+          },
+          "successDefinition": {
+            "type": "string",
+            "example": "Completed and not returned or cancelled within 30 days"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FunnelStageDto"
+            }
+          },
+          "dropOffs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DropOffReasonDto"
+            }
+          },
+          "medians": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageMedianDto"
+            }
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdoptionBreakdownDto"
+            }
+          },
+          "success": {
+            "$ref": "#/components/schemas/AdoptionSuccessDto"
+          }
+        },
+        "required": [
+          "windowDays",
+          "successDefinition",
+          "stages",
+          "dropOffs",
+          "medians",
+          "breakdown",
+          "success"
+        ]
+      },
+      "ProjectionStateDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "daily_aggregates"
+          },
+          "lastProcessedAt": {
+            "type": "object",
+            "nullable": true
+          },
+          "lastRunAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "rowCount": {
+            "type": "number",
+            "example": 42
+          },
+          "refreshLagSeconds": {
+            "type": "object",
+            "nullable": true,
+            "example": 120
+          },
+          "refreshIntervalSeconds": {
+            "type": "number",
+            "example": 300
+          }
+        },
+        "required": [
+          "key",
+          "lastRunAt",
+          "rowCount",
+          "refreshIntervalSeconds"
+        ]
+      },
+      "CreateCustodyDto": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000",
+            "description": "UUID of the pet to request custody for"
+          },
+          "startDate": {
+            "type": "string",
+            "example": "2024-12-25T00:00:00.000Z",
+            "description": "Start date of the custody period (must be in the future)"
+          },
+          "durationDays": {
+            "type": "number",
+            "example": 14,
+            "description": "Duration of custody in days (minimum 1, maximum 90)",
+            "minimum": 1,
+            "maximum": 90
+          },
+          "depositAmount": {
+            "type": "number",
+            "example": 100,
+            "description": "Optional refundable deposit amount"
+          }
+        },
+        "required": [
+          "petId",
+          "startDate",
+          "durationDays"
+        ]
+      },
+      "PetResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "example": "Buddy"
+          },
+          "species": {
+            "type": "string",
+            "example": "DOG"
+          },
+          "breed": {
+            "type": "string",
+            "example": "Golden Retriever",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "example": 3,
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "example": "Friendly and energetic dog",
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "example": "https://example.com/image.jpg",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "species",
+          "breed",
+          "age",
+          "description",
+          "imageUrl"
+        ]
+      },
+      "CustodyResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "status": {
+            "type": "string",
+            "example": "PENDING"
+          },
+          "type": {
+            "type": "string",
+            "example": "TEMPORARY"
+          },
+          "depositAmount": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "example": "100.00",
+            "description": "Deposit amount; decimals are serialized as strings by Prisma"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-12-25T00:00:00.000Z"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2025-01-08T00:00:00.000Z",
+            "nullable": true
+          },
+          "petId": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "holderId": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "escrowId": {
+            "type": "object",
+            "example": "123e4567-e89b-12d3-a456-426614174000",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-12-20T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-12-20T00:00:00.000Z"
+          },
+          "pet": {
+            "$ref": "#/components/schemas/PetResponseDto"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "type",
+          "depositAmount",
+          "startDate",
+          "endDate",
+          "petId",
+          "holderId",
+          "escrowId",
+          "createdAt",
+          "updatedAt",
+          "pet"
+        ]
+      },
+      "DataExportInitiatedDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "87f3b8e4-b77e-4076-a05e-57bba1ebf1e1"
+          },
+          "requestId": {
+            "type": "string",
+            "example": "87f3b8e4-b77e-4076-a05e-57bba1ebf1e1"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "example": "PENDING"
+          },
+          "message": {
+            "type": "string",
+            "example": "Data export request enqueued successfully"
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "status",
+          "message"
+        ]
+      },
+      "DataExportStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "87f3b8e4-b77e-4076-a05e-57bba1ebf1e1"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "PROCESSING",
+              "COMPLETED",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "example": "COMPLETED"
+          },
+          "downloadUrl": {
+            "type": "string",
+            "example": "/users/me/data-export/87f3b8e4.../download?expires=...&sig=..."
+          },
+          "expiresAt": {
+            "type": "string",
+            "example": "2026-10-29T12:00:00.000Z",
+            "description": "Expiration date of the export file (7 days)"
+          },
+          "linkExpiresAt": {
+            "type": "string",
+            "example": "2026-10-22T13:15:00.000Z",
+            "description": "Expiration date of the signed download link (15 minutes)"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-10-22T13:00:00.000Z"
+          },
+          "message": {
+            "type": "string",
+            "example": "File auto-purged after 7 days"
+          },
+          "error": {
+            "type": "string",
+            "example": "Failed to process export"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt"
+        ]
+      },
+      "RatingSummaryDto": {
+        "type": "object",
+        "properties": {
+          "average": {
+            "type": "number",
+            "example": 5,
+            "description": "Average rating score"
+          },
+          "count": {
+            "type": "number",
+            "example": 10,
+            "description": "Total count of reviews"
+          }
+        },
+        "required": [
+          "average",
+          "count"
+        ]
+      },
+      "PublicProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+            "description": "User ID"
+          },
+          "displayName": {
+            "type": "string",
+            "example": "John D.",
+            "description": "Display name formatted as First Name + Last Initial"
+          },
+          "avatarUrl": {
+            "type": "object",
+            "example": "https://example.com/avatar.jpg",
+            "nullable": true,
+            "description": "Avatar URL"
+          },
+          "memberSince": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z",
+            "description": "Registration date in ISO string format"
+          },
+          "verifiedBadges": {
+            "example": [
+              "VERIFIED_SHELTER"
+            ],
+            "description": "List of badges earned by user",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "completedAgreements": {
+            "type": "number",
+            "example": 3,
+            "description": "Count of completed adoptions and custody agreements"
+          },
+          "ratingSummary": {
+            "nullable": true,
+            "description": "Summary of ratings/reviews",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RatingSummaryDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "avatarUrl",
+          "memberSince",
+          "verifiedBadges",
+          "completedAgreements",
+          "ratingSummary"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "example": "John"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+2348012345678"
+          },
+          "bio": {
+            "type": "string",
+            "example": "Dog lover, weekend volunteer."
+          },
+          "location": {
+            "type": "string",
+            "example": "Lagos, Nigeria"
+          }
+        }
+      },
+      "DeleteAccountDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "example": "StrongPassword123",
+            "description": "Required when deleting your own account; ignored for admin deletions."
+          }
+        }
+      },
+      "SuspendUserDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Why the account is being suspended (stored on the user record)",
+            "example": "Repeated violation of the platform trust policy",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@email.com",
+            "description": "Registered email address"
+          },
+          "password": {
+            "type": "string",
+            "example": "StrongPassword123",
+            "description": "User password has minimum length of 8 characters"
+          },
+          "firstName": {
+            "type": "string",
+            "example": "Bola"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Bimbo"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@email.com",
+            "description": "Registered email address"
+          },
+          "password": {
+            "type": "string",
+            "example": "StrongPassword123",
+            "description": "User password"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "secure_reset_token_string"
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "NewStrongPass123"
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ]
+      },
+      "ReplayEventsDto": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "If true (default), only compute replayed state — no DB writes. If false, applies corrected state to the DB (requires `confirm: true`).",
+            "default": true
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Required when `dryRun: false`. Confirms the admin intends to mutate DB state. Without it, the endpoint returns 400.",
+            "default": false
+          },
+          "upToSequence": {
+            "type": "number",
+            "description": "Optional. Replay only the first N events for this aggregate (index-based; events are ordered by createdAt ASC).",
+            "minimum": 1
+          }
+        }
+      },
+      "EventReplayResponseDto": {
+        "type": "object",
+        "properties": {
+          "aggregateId": {
+            "type": "string",
+            "description": "The aggregate ID that was replayed."
+          },
+          "aggregateType": {
+            "type": "string",
+            "description": "Detected aggregate type (USER, PET, ADOPTION, CUSTODY, ESCROW).",
+            "enum": [
+              "USER",
+              "PET",
+              "ADOPTION",
+              "CUSTODY",
+              "ESCROW"
+            ]
+          },
+          "eventsProcessed": {
+            "type": "number",
+            "description": "Number of events processed during the replay.",
+            "example": 4
+          },
+          "replayedState": {
+            "type": "object",
+            "description": "The state reconstructed by replaying the events. Shape depends on aggregate type.",
+            "example": {
+              "status": "COMPLETED"
+            }
+          },
+          "discrepancies": {
+            "description": "List of fields where the replayed state differs from the current DB state, formatted as \"field: replayed=X, current=Y\". Empty when state matches.",
+            "example": [
+              "status: replayed=COMPLETED, current=APPROVED"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "appliedToDb": {
+            "type": "boolean",
+            "description": "Whether the replayed state was applied to the database. Always false when dryRun is true."
+          }
+        },
+        "required": [
+          "aggregateId",
+          "aggregateType",
+          "eventsProcessed",
+          "replayedState",
+          "discrepancies",
+          "appliedToDb"
+        ]
+      },
+      "ErrorDetailDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "email"
+          },
+          "message": {
+            "type": "string",
+            "example": "email must be a valid email address"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 400,
+            "description": "HTTP status code"
+          },
+          "code": {
+            "type": "string",
+            "example": "VALIDATION_ERROR",
+            "description": "Stable error code"
+          },
+          "message": {
+            "description": "Human-readable error message",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "details": {
+            "description": "Validation details, when applicable",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetailDto"
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440000",
+            "description": "Request identifier echoed in the X-Request-Id header"
+          },
+          "timestamp": {
+            "type": "string",
+            "example": "2026-10-22T00:00:00.000Z",
+            "description": "Timestamp of the response (ISO 8601)"
+          },
+          "path": {
+            "type": "string",
+            "example": "/api/v1/auth/register",
+            "description": "Request path"
+          }
+        },
+        "required": [
+          "statusCode",
+          "code",
+          "message",
+          "requestId",
+          "timestamp",
+          "path"
+        ]
+      },
+      "DisputeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "escrowId": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "adoptionId": {
+            "type": "object",
+            "nullable": true,
+            "example": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "example": "OPEN",
+            "enum": [
+              "OPEN",
+              "RESOLVED"
+            ]
+          },
+          "reason": {
+            "type": "object",
+            "nullable": true,
+            "example": "Funds not released"
+          },
+          "openedAt": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z"
+          },
+          "resolvedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-01-02T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "escrowId",
+          "status",
+          "openedAt"
+        ]
+      },
+      "MoneyDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "example": "100.00",
+            "description": "Decimal string, never a float"
+          },
+          "currency": {
+            "type": "string",
+            "example": "XLM",
+            "description": "ISO asset or currency code"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ]
+      },
+      "NotificationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "example": "ADOPTION_APPROVED"
+          },
+          "title": {
+            "type": "string",
+            "example": "Adoption approved"
+          },
+          "message": {
+            "type": "string",
+            "example": "Your adoption request was approved."
+          },
+          "readAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-01-01T00:00:00.000Z"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "title",
+          "message",
+          "createdAt"
+        ]
+      },
+      "PaymentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "escrowId": {
+            "type": "string",
+            "example": "uuid"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/MoneyDto"
+          },
+          "status": {
+            "type": "string",
+            "example": "FUNDED"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "escrowId",
+          "amount",
+          "status",
+          "createdAt"
+        ]
+      }
+    }
+  }
+}

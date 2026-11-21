@@ -6,6 +6,8 @@ import {
   IsEnum,
   IsLatitude,
   IsLongitude,
+  MaxLength,
+  IsUrl,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -14,6 +16,7 @@ import { PetGender, PetSize, PetSpecies } from '../../common/enums';
 export class CreatePetDto {
   @ApiProperty({ description: 'Pet name' })
   @IsString()
+  @MaxLength(120)
   name: string;
 
   @ApiProperty({ enum: PetSpecies, description: 'Species (e.g., DOG, CAT)' })
@@ -22,6 +25,7 @@ export class CreatePetDto {
 
   @ApiPropertyOptional({ description: 'Breed' })
   @IsString()
+  @MaxLength(120)
   @IsOptional()
   breed?: string;
 
@@ -42,16 +46,21 @@ export class CreatePetDto {
 
   @ApiPropertyOptional({ description: 'Color' })
   @IsString()
+  @MaxLength(60)
   @IsOptional()
   color?: string;
 
   @ApiPropertyOptional({ description: 'Description' })
   @IsString()
+  @MaxLength(2000)
   @IsOptional()
   description?: string;
 
   @ApiPropertyOptional({ description: 'Image URLs', type: [String] })
   @IsArray()
+  @IsString({ each: true })
+  @MaxLength(2048, { each: true })
+  @IsUrl({}, { each: true })
   @IsOptional()
   images?: string[];
 
@@ -60,6 +69,7 @@ export class CreatePetDto {
     example: 'Berlin',
   })
   @IsString()
+  @MaxLength(120)
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
@@ -71,6 +81,7 @@ export class CreatePetDto {
     example: 'Berlin',
   })
   @IsString()
+  @MaxLength(120)
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
@@ -82,6 +93,7 @@ export class CreatePetDto {
     example: 'Germany',
   })
   @IsString()
+  @MaxLength(120)
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

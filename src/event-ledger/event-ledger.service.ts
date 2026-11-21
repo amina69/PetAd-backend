@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
+import { DailyAggregatesProjectionService } from '../analytics/projections/daily-aggregates.projection';
 
 export interface AppendEventParams {
   aggregateType: EventEntityType | string;
@@ -28,6 +29,8 @@ export class EventLedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: EventLedgerRepository,
+    @Optional()
+    private readonly projections?: DailyAggregatesProjectionService,
   ) {}
 
   /**
@@ -40,15 +43,13 @@ export class EventLedgerService {
    * After successful write, an anchoring job is queued.
    */
   async appendEvent(params: AppendEventParams) {
-    return this.prisma.$transaction(async (tx) => {
-      // Advisory lock prevents concurrent writes for the same aggregate
+    const event = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${params.aggregateId}))
       `;
 
       const eventLog = tx.eventLog as any;
 
-      // Fetch the current max sequence number for this aggregate
       const latestEvent = await eventLog.findFirst({
         where: { entityId: params.aggregateId },
         orderBy: { sequenceNumber: 'desc' },
@@ -57,8 +58,7 @@ export class EventLedgerService {
 
       const sequenceNumber = (latestEvent?.sequenceNumber ?? 0) + 1;
 
-      // Create the event with the allocated sequence number
-      const event = await eventLog.create({
+      const created = await eventLog.create({
         data: {
           entityType: params.aggregateType,
           entityId: params.aggregateId,
@@ -73,18 +73,30 @@ export class EventLedgerService {
         `Event appended: ${params.eventType} on ${params.aggregateType} [${params.aggregateId}] seq=${sequenceNumber}`,
       );
 
-      // Queue anchoring job (best-effort, non-blocking)
+      return created;
+    });
+
+    try {
+      await this.queueAnchoringJob(event);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to queue anchoring job for event ${event.id}: ${reason}`,
+      );
+    }
+
+    if (this.projections) {
       try {
-        await this.queueAnchoringJob(event);
+        await this.projections.refreshSince(event.createdAt);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.logger.warn(
-          `Failed to queue anchoring job for event ${event.id}: ${reason}`,
+          `Daily aggregate refresh failed for event ${event.id}: ${reason}`,
         );
       }
+    }
 
-      return event;
-    });
+    return event;
   }
 
   /**

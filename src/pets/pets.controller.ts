@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Request,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -121,7 +122,7 @@ export class PetsController {
     },
   })
   @ApiResponse({ status: 404, description: 'Pet not found' })
-  async getPet(@Param('id') petId: string) {
+  async getPet(@Param('id', ParseUUIDPipe) petId: string) {
     return this.petsService.getPetById(petId);
   }
 
@@ -155,7 +156,7 @@ export class PetsController {
     },
   })
   @ApiResponse({ status: 404, description: 'Pet not found' })
-  async getMovementHistory(@Param('id') petId: string) {
+  async getMovementHistory(@Param('id', ParseUUIDPipe) petId: string) {
     return this.petMovementService.getMovementHistory(petId);
   }
 
@@ -172,7 +173,7 @@ export class PetsController {
   @ApiResponse({ status: 404, description: 'Pet not found' })
   @ApiBearerAuth('JWT-auth')
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updatePetDto: UpdatePetDto,
     @Request() req: { user: { sub: string; role: string } },
   ) {
@@ -204,7 +205,7 @@ export class PetsController {
   @ApiResponse({ status: 404, description: 'Pet not found' })
   @ApiBearerAuth('JWT-auth')
   async remove(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Request() req: { user: { role: UserRole } },
   ) {
     return this.petsService.remove(id, req.user.role);
@@ -238,7 +239,7 @@ export class PetsController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
   @ApiResponse({ status: 404, description: 'Pet not found' })
   @ApiBearerAuth('JWT-auth')
-  async verifyAvailability(@Param('id') petId: string) {
+  async verifyAvailability(@Param('id', ParseUUIDPipe) petId: string) {
     return this.petsService.verifyAvailability(petId);
   }
 }

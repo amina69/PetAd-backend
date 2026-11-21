@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { CheckPolicy } from '../common/policies/check-policy.decorator';
 import { PolicyAction, PolicySubject } from '../common/policies/policy.types';
@@ -21,7 +22,7 @@ import {
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
 import { CustodyService } from './custody.service';
-import type { CreateCustodyDto } from './dto/create-custody.dto';
+import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 
 @ApiTags('custody')
@@ -108,7 +109,7 @@ export class CustodyController {
       'Not Found - Custody does not exist, or you are not its holder',
   })
   async returnCustody(
-    @Param('id') custodyId: string,
+    @Param('id', ParseUUIDPipe) custodyId: string,
   ): Promise<CustodyResponseDto> {
     return this.custodyService.returnCustody(custodyId);
   }
@@ -138,7 +139,7 @@ export class CustodyController {
       'Not Found - Custody does not exist, or you are neither its holder nor the pet owner',
   })
   async violationCustody(
-    @Param('id') custodyId: string,
+    @Param('id', ParseUUIDPipe) custodyId: string,
   ): Promise<CustodyResponseDto> {
     return this.custodyService.violationCustody(custodyId);
   }

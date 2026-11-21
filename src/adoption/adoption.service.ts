@@ -25,6 +25,7 @@ import { PetStatus } from '../common/enums/pet-status.enum';
 /** Maps an AdoptionStatus to its corresponding EventType, if one exists. */
 const ADOPTION_STATUS_EVENT_MAP: Partial<Record<AdoptionStatus, EventType>> = {
   [AdoptionStatus.APPROVED]: EventType.ADOPTION_APPROVED,
+  [AdoptionStatus.ESCROW_FUNDED]: EventType.ADOPTION_ESCROW_FUNDED,
   [AdoptionStatus.REJECTED]: EventType.ADOPTION_REJECTED,
   [AdoptionStatus.CANCELLED]: EventType.ADOPTION_CANCELLED,
   [AdoptionStatus.COMPLETED]: EventType.ADOPTION_COMPLETED,

@@ -1,7 +1,17 @@
-import { IsOptional, IsInt, Min, Max, IsEnum, IsString } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '../../common/enums';
+import { UserStatus } from '@prisma/client';
 
 export class ListUsersDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
@@ -22,6 +32,7 @@ export class ListUsersDto {
   @ApiPropertyOptional({ description: 'Search by email or name (case-insensitive)' })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   q?: string;
 
@@ -30,13 +41,15 @@ export class ListUsersDto {
   @IsEnum(UserRole)
   role?: UserRole;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ enum: UserStatus })
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsEnum(UserStatus)
+  status?: UserStatus;
 
   @ApiPropertyOptional({ description: 'Sort field and order, e.g. createdAt:desc or createdAt:asc' })
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  @Matches(/^(createdAt|updatedAt|email|firstName|lastName|role|status|trustScore)(:(asc|desc))?$/)
   sort?: string;
 }

@@ -4,40 +4,42 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AppLogger } from './common/logger/logger.service';
 import { ValidationPipe } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import express from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import { config as dotenvConfig } from 'dotenv';
-import { ErrorResponseDto } from './common/dto/error-response.dto';
-import { ErrorDetailDto } from './common/dto/error-response.dto';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { validateEnv } from './config/env.validation';
+import {
+  API_PREFIX,
+  createOpenApiDocument,
+  SWAGGER_PATH,
+} from './common/openapi';
 
 // Load .env, then fail fast if the environment is invalid. Secret values
 // are validated but never surfaced in error messages (see env.validation).
 dotenvConfig();
 validateEnv();
 
-// API versioning decision: literal prefixing via setGlobalPrefix('api/v1').
-// See docs/API_VERSIONING.md for the rationale.
-const API_PREFIX = 'api/v1';
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use((req: any, res: any, next: () => void) => {
+  app.use((req: Request, _res: Response, next: NextFunction) => {
     const cookieHeader = req.headers.cookie;
+    const cookies: Record<string, string> = {};
     if (cookieHeader) {
-      const cookies: Record<string, string> = {};
       cookieHeader.split(';').forEach((cookie: string) => {
-        const parts = cookie.split('=');
-        if (parts.length === 2) {
-          cookies[parts[0].trim()] = decodeURIComponent(parts[1].trim());
+        const separatorIndex = cookie.indexOf('=');
+        if (separatorIndex > 0) {
+          try {
+            cookies[cookie.slice(0, separatorIndex).trim()] =
+              decodeURIComponent(cookie.slice(separatorIndex + 1).trim());
+          } catch {
+            cookies[cookie.slice(0, separatorIndex).trim()] = '';
+          }
         }
       });
-      req.cookies = cookies;
-    } else {
-      req.cookies = {};
     }
+    (req as Request & { cookies: Record<string, string> }).cookies = cookies;
     next();
   });
   // TODO(#215): Add server-side TOTP enrollment, challenge, and recovery flows.
@@ -100,8 +102,8 @@ async function bootstrap() {
 
   // 5. Environment-driven proxy trust.
   if (trustProxy) {
-    app.use((req, res, next) => {
-      req['trust proxy'] = 1;
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as Request & { 'trust proxy': number })['trust proxy'] = 1;
       next();
     });
   }
@@ -125,26 +127,8 @@ async function bootstrap() {
   app.setGlobalPrefix(API_PREFIX, { exclude: ['health'] });
 
   // 10. Swagger at root-level /api, intentionally not under the API prefix.
-  const documentConfig = new DocumentBuilder()
-    .setTitle('Pet Adoption API')
-    .setDescription('API documentation for the Pet Adoption platform')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        in: 'header',
-      },
-      'JWT-auth',
-    )
-    .build();
-
-  const document = SwaggerModule.createDocument(app, documentConfig, {
-    extraModels: [ErrorResponseDto, ErrorDetailDto],
-  });
-
-  SwaggerModule.setup('api', app, document, { useGlobalPrefix: false });
+  const document = createOpenApiDocument(app);
+  SwaggerModule.setup(SWAGGER_PATH, app, document, { useGlobalPrefix: false });
 
   await app.listen(port, '0.0.0.0');
 

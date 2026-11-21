@@ -16,6 +16,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -49,6 +50,7 @@ import {
   assertSupportedAvatar,
   MAX_AVATAR_SIZE_BYTES,
 } from './utils/image-signature';
+import { sanitizeFileName } from '../common/pipes';
 
 interface DownloadRequest extends Request {
   user?: {
@@ -145,7 +147,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 404, description: 'Export request not found' })
   async getDataExportStatus(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() req: AuthRequest,
   ): Promise<DataExportStatusResponseDto> {
     const userId = req.user.userId || req.user.sub;
@@ -166,7 +168,7 @@ export class UsersController {
   @ApiResponse({ status: 410, description: 'Link expired or file purged' })
   @ApiResponse({ status: 404, description: 'Export file not found' })
   async downloadDataExport(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Query('expires') expires: string,
     @Query('sig') sig: string,
     @Req() req: DownloadRequest,
@@ -203,14 +205,14 @@ export class UsersController {
     status: 404,
     description: 'User not found or suspended/deleted',
   })
-  async getPublicProfile(@Param('id') id: string): Promise<PublicProfileDto> {
+  async getPublicProfile(@Param('id', ParseUUIDPipe) id: string): Promise<PublicProfileDto> {
     return this.usersService.getPublicProfile(id);
   }
 
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Get(':id')
   @ApiOperation({ summary: 'Get user profile' })
-  async getProfile(@Param('id') id: string, @Req() req: AuthRequest) {
+  async getProfile(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {
     this.checkOwnership(req, id);
     return this.usersService.getProfile(id);
   }
@@ -226,7 +228,7 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'Unknown or read-only field' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async updateProfile(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
     @Req() req: AuthRequest,
   ) {
@@ -257,7 +259,7 @@ export class UsersController {
     }),
   )
   async uploadAvatar(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: AuthRequest,
   ) {
@@ -267,7 +269,7 @@ export class UsersController {
       throw new BadRequestException('Avatar file is required');
     }
 
-    // Content sniffing, not the client-provided mimetype/filename.
+    sanitizeFileName(file.originalname);
     assertSupportedAvatar(file.buffer);
 
     const upload = await this.cloudinary.uploadAvatar(file.buffer, 'users');
@@ -296,7 +298,7 @@ export class UsersController {
       'ACCOUNT_DELETION_BLOCKED (with reasons) or ACCOUNT_ALREADY_DELETED',
   })
   async deleteProfile(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DeleteAccountDto,
     @Req() req: AuthRequest,
   ) {
@@ -321,7 +323,7 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 409, description: 'User is already suspended' })
   async suspend(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SuspendUserDto,
     @Req() req: AuthRequest,
   ) {
@@ -341,7 +343,7 @@ export class UsersController {
   @ApiResponse({ status: 403, description: 'Forbidden - Admin only' })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 409, description: 'User is not suspended' })
-  async reinstate(@Param('id') id: string, @Req() req: AuthRequest) {
+  async reinstate(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {
     return this.usersService.reinstate(id, this.actorId(req));
   }
 }

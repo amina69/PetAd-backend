@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventType, EventEntityType, Prisma } from '@prisma/client';
+import { DailyAggregatesProjectionService } from '../analytics/projections/daily-aggregates.projection';
 
 export interface CreateEventLogDto {
   entityType: EventEntityType;
@@ -125,7 +126,11 @@ export function userReducer(
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional()
+    private readonly projections?: DailyAggregatesProjectionService,
+  ) {}
 
   async logEvent(dto: CreateEventLogDto) {
     try {
@@ -145,6 +150,17 @@ export class EventsService {
       this.logger.log(
         `Event logged: ${event.eventType} on ${event.entityType} [${event.entityId}]`,
       );
+
+      if (this.projections) {
+        try {
+          await this.projections.refreshSince(event.createdAt);
+        } catch (error) {
+          this.logger.warn(
+            `Daily aggregate refresh failed for ${event.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
       return event;
     } catch (error) {
       this.logger.error(

@@ -106,6 +106,64 @@ export class EscrowService {
     });
   }
 
+  async openDispute(escrowId: string, reason?: string) {
+    const escrow = await this.prisma.escrow.findUnique({
+      where: { id: escrowId },
+      include: { adoption: true },
+    });
+
+    if (!escrow) {
+      throw new NotFoundException('Escrow not found');
+    }
+
+    const updated = await this.prisma.escrow.update({
+      where: { id: escrowId },
+      data: { status: EscrowStatus.DISPUTED },
+    });
+
+    await this.events.logEvent({
+      entityType: EventEntityType.ESCROW,
+      entityId: escrowId,
+      eventType: 'DISPUTE_OPENED' as EventType,
+      payload: {
+        escrowId,
+        adoptionId: escrow.adoption?.id ?? null,
+        reason: reason ?? null,
+      },
+    });
+
+    return updated;
+  }
+
+  async resolveDispute(escrowId: string, resolution: 'RELEASED' | 'REFUNDED') {
+    const escrow = await this.prisma.escrow.findUnique({
+      where: { id: escrowId },
+      include: { adoption: true },
+    });
+
+    if (!escrow) {
+      throw new NotFoundException('Escrow not found');
+    }
+
+    const updated = await this.prisma.escrow.update({
+      where: { id: escrowId },
+      data: { status: EscrowStatus[resolution] },
+    });
+
+    await this.events.logEvent({
+      entityType: EventEntityType.ESCROW,
+      entityId: escrowId,
+      eventType: 'DISPUTE_RESOLVED' as EventType,
+      payload: {
+        escrowId,
+        adoptionId: escrow.adoption?.id ?? null,
+        resolution,
+      },
+    });
+
+    return updated;
+  }
+
   async refundEscrow(escrowId: string, txHash?: string) {
     return this.prisma.$transaction(async (tx) => {
       const escrow = await tx.escrow.findUnique({

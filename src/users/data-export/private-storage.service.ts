@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveWithinDirectory, sanitizeFileName } from '../../common/pipes';
 
 @Injectable()
 export class PrivateStorageService {
@@ -29,22 +30,25 @@ export class PrivateStorageService {
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
-    const fullPath = path.join(this.storageDir, fileName);
+    const fullPath = resolveWithinDirectory(
+      sanitizeFileName(fileName),
+      this.storageDir,
+    );
     await fs.promises.writeFile(fullPath, buffer);
     return fullPath;
   }
 
   async readFile(filePath: string): Promise<Buffer> {
-    return fs.promises.readFile(filePath);
+    return fs.promises.readFile(this.resolvePath(filePath));
   }
 
   createReadStream(filePath: string): fs.ReadStream {
-    return fs.createReadStream(filePath);
+    return fs.createReadStream(this.resolvePath(filePath));
   }
 
   async fileExists(filePath: string): Promise<boolean> {
     try {
-      await fs.promises.access(filePath, fs.constants.F_OK);
+      await fs.promises.access(this.resolvePath(filePath), fs.constants.F_OK);
       return true;
     } catch {
       return false;
@@ -52,13 +56,18 @@ export class PrivateStorageService {
   }
 
   async deleteFile(filePath: string): Promise<void> {
+    const resolvedPath = this.resolvePath(filePath);
     try {
-      if (await this.fileExists(filePath)) {
-        await fs.promises.unlink(filePath);
-        this.logger.log(`Purged private file: ${filePath}`);
+      if (await this.fileExists(resolvedPath)) {
+        await fs.promises.unlink(resolvedPath);
+        this.logger.log(`Purged private file: ${resolvedPath}`);
       }
     } catch (error) {
-      this.logger.error(`Failed to delete private file ${filePath}: ${error}`);
+      this.logger.error(`Failed to delete private file ${resolvedPath}: ${error}`);
     }
+  }
+
+  private resolvePath(filePath: string): string {
+    return resolveWithinDirectory(filePath, this.storageDir);
   }
 }
