@@ -300,7 +300,10 @@ describe('PetsService', () => {
       );
       mockAvailabilityService.resolve.mockResolvedValue('AVAILABLE');
 
-      const result = await service.findAll({ near, radius: 5 });
+      const result = (await service.findAll({ near, radius: 5 })) as {
+        data: Array<{ id: string; distanceKm?: number; isAvailable: boolean }>;
+        meta: { total: number };
+      };
 
       expect(mockPetsRepository.findIdsWithinRadius).toHaveBeenCalledWith(
         52.52,

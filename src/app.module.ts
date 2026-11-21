@@ -20,6 +20,8 @@ import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { TrustModule } from './trust/trust.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { configuration } from './config/configuration';
 
 @Module({
@@ -55,6 +57,8 @@ import { configuration } from './config/configuration';
     JobsModule,
     AdminModule,
     EventLedgerModule,
+    TrustModule,
+    ReviewsModule,
   ],
 
   controllers: [AppController],

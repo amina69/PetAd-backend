@@ -61,5 +61,25 @@ export const configuration = (): AppConfig => {
     trustProxy: env.TRUST_PROXY,
     logLevel: env.LOG_LEVEL,
     sentryDsn: env.SENTRY_DSN,
+    trust: {
+      scoring: {
+        version: env.TRUST_ALGORITHM_VERSION,
+        baseScore: env.TRUST_BASE_SCORE,
+        halfLifeDays: env.TRUST_HALF_LIFE_DAYS,
+        minimumVolume: env.TRUST_MINIMUM_VOLUME,
+        diminishingRate: env.TRUST_DIMINISHING_RATE,
+        weights: {
+          AGREEMENT_COMPLETED: env.TRUST_WEIGHT_COMPLETION,
+          POSITIVE_REVIEW: env.TRUST_WEIGHT_POSITIVE_REVIEW,
+          NEUTRAL_REVIEW: env.TRUST_WEIGHT_NEUTRAL_REVIEW,
+          NEGATIVE_REVIEW: env.TRUST_WEIGHT_NEGATIVE_REVIEW,
+          DISPUTE_OPENED: env.TRUST_WEIGHT_DISPUTE_OPENED,
+          DISPUTE_RESOLVED_IN_FAVOUR: env.TRUST_WEIGHT_DISPUTE_FAVOUR,
+          DISPUTE_RESOLVED_AGAINST: env.TRUST_WEIGHT_DISPUTE_AGAINST,
+          VIOLATION: env.TRUST_WEIGHT_VIOLATION,
+          DOCUMENT_VERIFIED: env.TRUST_WEIGHT_DOCUMENT_VERIFIED,
+        },
+      },
+    },
   };
 };

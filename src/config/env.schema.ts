@@ -35,6 +35,20 @@ export interface RawEnvConfig {
   TRUST_PROXY: boolean;
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   SENTRY_DSN?: string;
+  TRUST_ALGORITHM_VERSION: string;
+  TRUST_BASE_SCORE: number;
+  TRUST_HALF_LIFE_DAYS: number;
+  TRUST_MINIMUM_VOLUME: number;
+  TRUST_DIMINISHING_RATE: number;
+  TRUST_WEIGHT_COMPLETION: number;
+  TRUST_WEIGHT_POSITIVE_REVIEW: number;
+  TRUST_WEIGHT_NEUTRAL_REVIEW: number;
+  TRUST_WEIGHT_NEGATIVE_REVIEW: number;
+  TRUST_WEIGHT_VIOLATION: number;
+  TRUST_WEIGHT_DISPUTE_OPENED: number;
+  TRUST_WEIGHT_DISPUTE_FAVOUR: number;
+  TRUST_WEIGHT_DISPUTE_AGAINST: number;
+  TRUST_WEIGHT_DOCUMENT_VERIFIED: number;
 }
 
 /**
@@ -82,6 +96,16 @@ export interface AppConfig {
   trustProxy: RawEnvConfig['TRUST_PROXY'];
   logLevel: RawEnvConfig['LOG_LEVEL'];
   sentryDsn?: RawEnvConfig['SENTRY_DSN'];
+  trust: {
+    scoring: {
+      version: string;
+      baseScore: number;
+      halfLifeDays: number;
+      minimumVolume: number;
+      diminishingRate: number;
+      weights: Record<string, number>;
+    };
+  };
 }
 
 /**
@@ -169,4 +193,19 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
+
+  TRUST_ALGORITHM_VERSION: Joi.string().default('trust-v1'),
+  TRUST_BASE_SCORE: Joi.number().min(0).max(100).default(50),
+  TRUST_HALF_LIFE_DAYS: Joi.number().positive().default(180),
+  TRUST_MINIMUM_VOLUME: Joi.number().min(0).default(8),
+  TRUST_DIMINISHING_RATE: Joi.number().min(0).max(1).default(0.35),
+  TRUST_WEIGHT_COMPLETION: Joi.number().default(6),
+  TRUST_WEIGHT_POSITIVE_REVIEW: Joi.number().default(5),
+  TRUST_WEIGHT_NEUTRAL_REVIEW: Joi.number().default(1),
+  TRUST_WEIGHT_NEGATIVE_REVIEW: Joi.number().default(-12),
+  TRUST_WEIGHT_VIOLATION: Joi.number().default(-18),
+  TRUST_WEIGHT_DISPUTE_OPENED: Joi.number().default(-6),
+  TRUST_WEIGHT_DISPUTE_FAVOUR: Joi.number().default(2),
+  TRUST_WEIGHT_DISPUTE_AGAINST: Joi.number().default(-10),
+  TRUST_WEIGHT_DOCUMENT_VERIFIED: Joi.number().default(2),
 }).options({ abortEarly: false, allowUnknown: true });
