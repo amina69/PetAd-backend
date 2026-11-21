@@ -7,6 +7,12 @@ export const DATA_EXPORT_QUEUE_NAME = 'data_export';
 export const PROCESS_DATA_EXPORT_JOB_NAME = 'process_data_export';
 export const CLEANUP_DATA_EXPORT_JOB_NAME = 'cleanup_data_export';
 
+export const WEBHOOK_QUEUE_NAME = 'webhooks';
+export const PROCESS_WEBHOOK_JOB_NAME = 'process_webhook';
+
+export const REVENUE_REPORT_QUEUE_NAME = 'revenue_reports';
+export const GENERATE_REVENUE_REPORT_JOB_NAME = 'generate_revenue_report';
+
 export function getRedisConnection(configService: ConfigService) {
   const redisUrl = configService.get<string>('REDIS_URL');
   if (!redisUrl) {

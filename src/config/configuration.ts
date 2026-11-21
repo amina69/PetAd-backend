@@ -8,6 +8,41 @@ function parseCorsOrigins(raw: string): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+function parseWebhookProviders(
+  env: RawEnvConfig,
+): AppConfig['webhooks']['providers'] {
+  const providers: AppConfig['webhooks']['providers'] = {};
+
+  for (const entry of env.WEBHOOK_PROVIDERS.split(',')) {
+    const name = entry.trim().toLowerCase();
+    if (!name) continue;
+    if (!/^[a-z0-9_-]+$/.test(name)) {
+      throw new Error(
+        `Invalid webhook provider name in WEBHOOK_PROVIDERS: ${name}`,
+      );
+    }
+
+    const prefix = `WEBHOOK_${name.toUpperCase().replace(/-/g, '_')}`;
+    const secret = process.env[`${prefix}_SECRET`];
+    if (!secret) {
+      throw new Error(
+        `Missing required secret for webhook provider "${name}" (${prefix}_SECRET)`,
+      );
+    }
+
+    providers[name] = {
+      secret,
+      signatureHeader:
+        process.env[`${prefix}_SIGNATURE_HEADER`] ??
+        (name === 'stripe' ? 'stripe-signature' : 'x-webhook-signature'),
+      eventIdHeader:
+        process.env[`${prefix}_EVENT_ID_HEADER`] ?? 'x-webhook-event-id',
+    };
+  }
+
+  return providers;
+}
+
 /**
  * Typed configuration factory consumed by `ConfigModule.forRoot({
  *   load: [configuration]
@@ -61,5 +96,23 @@ export const configuration = (): AppConfig => {
     trustProxy: env.TRUST_PROXY,
     logLevel: env.LOG_LEVEL,
     sentryDsn: env.SENTRY_DSN,
+    webhooks: {
+      providers: parseWebhookProviders(env),
+      toleranceSeconds: env.WEBHOOK_TOLERANCE_SECONDS,
+    },
+    fees: {
+      cacheTtlSeconds: env.FEE_SCHEDULE_CACHE_TTL_SECONDS,
+    },
+    reports: {
+      syncLimitDays: env.REVENUE_REPORT_SYNC_LIMIT_DAYS,
+    },
+    trustAbuse: {
+      minAccountAgeDays: env.TRUST_ABUSE_MIN_ACCOUNT_AGE_DAYS,
+      reviewBurstWindowDays: env.TRUST_ABUSE_REVIEW_BURST_WINDOW_DAYS,
+      reviewBurstThreshold: env.TRUST_ABUSE_REVIEW_BURST_THRESHOLD,
+      agreementThreshold: env.TRUST_ABUSE_AGREEMENT_THRESHOLD,
+      flaggedWeight: env.TRUST_ABUSE_FLAGGED_WEIGHT,
+      signalSalt: env.TRUST_ABUSE_SIGNAL_SALT,
+    },
   };
 };

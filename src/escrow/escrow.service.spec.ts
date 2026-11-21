@@ -12,25 +12,41 @@ import {
   EventType,
   EventEntityType,
 } from '@prisma/client';
+import { FeeCalculationService } from '../payments/fees/fee-calculation.service';
+import { FeeScheduleService } from '../payments/fees/fee-schedule.service';
+import { PaymentLedgerService } from '../payments/ledger/payment-ledger.service';
+
+type MockMethod = jest.Mock<Promise<unknown>, unknown[]>;
+
+interface MockPrisma {
+  escrow: { create: MockMethod; findUnique: MockMethod; update: MockMethod };
+  adoption: { update: MockMethod };
+  pet: { update: MockMethod };
+  $transaction: jest.Mock<
+    Promise<unknown>,
+    [(tx: MockPrisma) => Promise<unknown>]
+  >;
+}
 
 describe('EscrowService', () => {
   let service: EscrowService;
-  let prismaService: PrismaService;
-  let eventsService: EventsService;
 
-  const mockPrismaService = {
+  const mockPrismaService: MockPrisma = {
     escrow: {
-      create: jest.fn(),
-      findUnique: jest.fn(),
-      update: jest.fn(),
+      create: jest.fn<Promise<unknown>, unknown[]>(),
+      findUnique: jest.fn<Promise<unknown>, unknown[]>(),
+      update: jest.fn<Promise<unknown>, unknown[]>(),
     },
     adoption: {
-      update: jest.fn(),
+      update: jest.fn<Promise<unknown>, unknown[]>(),
     },
     pet: {
-      update: jest.fn(),
+      update: jest.fn<Promise<unknown>, unknown[]>(),
     },
-    $transaction: jest.fn((callback) => callback(mockPrismaService)),
+    $transaction: jest.fn(
+      async (callback: (tx: MockPrisma) => Promise<unknown>) =>
+        callback(mockPrismaService),
+    ),
   };
 
   const mockEventsService = {
@@ -46,8 +62,41 @@ describe('EscrowService', () => {
     transition: jest.fn().mockResolvedValue(PetStatus.ADOPTED),
   };
 
+  const mockFeeCalculation = {
+    resolveForAgreement: jest.fn().mockResolvedValue({
+      id: 'schedule-1',
+      version: 1,
+    }),
+    calculate: jest.fn().mockReturnValue({
+      total: 5,
+      currency: 'XLM',
+      platformFee: 5,
+      scheduleVersion: 1,
+    }),
+  };
+
+  const mockFeeSchedules = {
+    findEffective: jest.fn().mockResolvedValue({ id: 'schedule-1' }),
+  };
+
+  const mockLedger = {
+    recordFee: jest.fn(),
+    recordRefund: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockFeeCalculation.resolveForAgreement.mockResolvedValue({
+      id: 'schedule-1',
+      version: 1,
+    });
+    mockFeeCalculation.calculate.mockReturnValue({
+      total: 5,
+      currency: 'XLM',
+      platformFee: 5,
+      scheduleVersion: 1,
+    });
+    mockFeeSchedules.findEffective.mockResolvedValue({ id: 'schedule-1' });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -59,12 +108,13 @@ describe('EscrowService', () => {
           provide: PetAvailabilityService,
           useValue: mockPetAvailabilityService,
         },
+        { provide: FeeCalculationService, useValue: mockFeeCalculation },
+        { provide: FeeScheduleService, useValue: mockFeeSchedules },
+        { provide: PaymentLedgerService, useValue: mockLedger },
       ],
     }).compile();
 
     service = module.get<EscrowService>(EscrowService);
-    prismaService = module.get<PrismaService>(PrismaService);
-    eventsService = module.get<EventsService>(EventsService);
   });
 
   afterEach(() => {
@@ -116,6 +166,14 @@ describe('EscrowService', () => {
       });
 
       expect(mockPrismaService.adoption.update).not.toHaveBeenCalled();
+      expect(mockLedger.recordFee).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 5,
+          currency: 'XLM',
+          escrowId,
+        }),
+        mockPrismaService,
+      );
       expect(result.status).toBe(EscrowStatus.RELEASED);
     });
 

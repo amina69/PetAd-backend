@@ -35,6 +35,16 @@ export interface RawEnvConfig {
   TRUST_PROXY: boolean;
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   SENTRY_DSN?: string;
+  WEBHOOK_PROVIDERS: string;
+  WEBHOOK_TOLERANCE_SECONDS: number;
+  FEE_SCHEDULE_CACHE_TTL_SECONDS: number;
+  REVENUE_REPORT_SYNC_LIMIT_DAYS: number;
+  TRUST_ABUSE_MIN_ACCOUNT_AGE_DAYS: number;
+  TRUST_ABUSE_REVIEW_BURST_WINDOW_DAYS: number;
+  TRUST_ABUSE_REVIEW_BURST_THRESHOLD: number;
+  TRUST_ABUSE_AGREEMENT_THRESHOLD: number;
+  TRUST_ABUSE_FLAGGED_WEIGHT: number;
+  TRUST_ABUSE_SIGNAL_SALT: string;
 }
 
 /**
@@ -82,6 +92,27 @@ export interface AppConfig {
   trustProxy: RawEnvConfig['TRUST_PROXY'];
   logLevel: RawEnvConfig['LOG_LEVEL'];
   sentryDsn?: RawEnvConfig['SENTRY_DSN'];
+  webhooks: {
+    providers: Record<
+      string,
+      { secret: string; signatureHeader: string; eventIdHeader: string }
+    >;
+    toleranceSeconds: number;
+  };
+  fees: {
+    cacheTtlSeconds: number;
+  };
+  reports: {
+    syncLimitDays: number;
+  };
+  trustAbuse: {
+    minAccountAgeDays: number;
+    reviewBurstWindowDays: number;
+    reviewBurstThreshold: number;
+    agreementThreshold: number;
+    flaggedWeight: number;
+    signalSalt: string;
+  };
 }
 
 /**
@@ -169,4 +200,19 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
+
+  WEBHOOK_PROVIDERS: Joi.string().default(''),
+  WEBHOOK_TOLERANCE_SECONDS: Joi.number().integer().min(0).default(300),
+  FEE_SCHEDULE_CACHE_TTL_SECONDS: Joi.number().integer().min(0).default(60),
+  REVENUE_REPORT_SYNC_LIMIT_DAYS: Joi.number().integer().min(1).default(366),
+
+  TRUST_ABUSE_MIN_ACCOUNT_AGE_DAYS: Joi.number().integer().min(0).default(30),
+  TRUST_ABUSE_REVIEW_BURST_WINDOW_DAYS: Joi.number()
+    .integer()
+    .min(1)
+    .default(7),
+  TRUST_ABUSE_REVIEW_BURST_THRESHOLD: Joi.number().integer().min(1).default(5),
+  TRUST_ABUSE_AGREEMENT_THRESHOLD: Joi.number().integer().min(2).default(3),
+  TRUST_ABUSE_FLAGGED_WEIGHT: Joi.number().min(0).max(1).default(0.2),
+  TRUST_ABUSE_SIGNAL_SALT: Joi.string().default('petad-trust-signals'),
 }).options({ abortEarly: false, allowUnknown: true });
