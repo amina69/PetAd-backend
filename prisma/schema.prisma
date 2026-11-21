@@ -82,6 +82,7 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  REVIEW
 }
 
 enum EventType {
@@ -108,10 +109,40 @@ enum EventType {
   ESCROW_FUNDED
   ESCROW_RELEASED
   ESCROW_REFUNDED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED_IN_FAVOUR
+  DISPUTE_RESOLVED_AGAINST
+  DOCUMENT_VERIFIED
+  REVIEW_CREATED
   TRUST_SCORE_UPDATED
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+}
+
+enum TrustEventType {
+  AGREEMENT_COMPLETED
+  POSITIVE_REVIEW
+  NEUTRAL_REVIEW
+  NEGATIVE_REVIEW
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED_IN_FAVOUR
+  DISPUTE_RESOLVED_AGAINST
+  VIOLATION
+  DOCUMENT_VERIFIED
+}
+
+enum ReviewAgreementType {
+  ADOPTION
+  CUSTODY
+}
+
+enum ReviewReportReason {
+  SPAM
+  ABUSE
+  OFFENSIVE
+  IRRELEVANT
+  OTHER
 }
 
 enum LogLevel {
@@ -123,16 +154,16 @@ enum LogLevel {
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash   String    @unique
-  familyId    String
-  userAgent   String?
-  ip          String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  familyId  String
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([familyId])
@@ -140,29 +171,29 @@ model Session {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
+  id        String   @id @default(uuid())
+  email     String   @unique
   // PII columns are nullable so a deleted account can keep its row for
   // referential integrity without retaining personal data.
   password  String?
-  firstName String?    @map("first_name")
-  lastName  String?    @map("last_name")
-  role      UserRole   @default(USER)
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  role      UserRole @default(USER)
 
   status           UserStatus @default(ACTIVE)
   suspendedAt      DateTime?  @map("suspended_at")
   suspensionReason String?    @map("suspension_reason")
 
-  trustScore Float   @default(50)
+  trustScore Float @default(50)
 
   // Profile fields editable through PATCH /users/:id
   phone    String?
   bio      String?
   location String?
 
-  stellarPublicKey String?   @unique @map("stellar_public_key")
-  avatarUrl        String?   @map("avatar_url")
-  avatarPublicId   String?   @map("avatar_public_id")
+  stellarPublicKey String? @unique @map("stellar_public_key")
+  avatarUrl        String? @map("avatar_url")
+  avatarPublicId   String? @map("avatar_public_id")
 
   // Set when the account is soft-deleted and its PII anonymised
   deletedAt DateTime? @map("deleted_at")
@@ -170,7 +201,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned   Pet[] @relation("PetOwner")
+  petsOwned Pet[] @relation("PetOwner")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
@@ -179,11 +210,18 @@ model User {
 
   events EventLog[] @relation("ActorEvents")
 
-  documents Document[]
+  documents           Document[]
   passwordResetTokens PasswordResetToken[]
-  sessions    Session[]
+  sessions            Session[]
 
   dataExports DataExport[]
+
+  trustScoreSnapshot TrustScore?
+  trustEvents        TrustEvent[]     @relation("TrustEventSubjects")
+  reviewsWritten     Review[]         @relation("ReviewsWritten")
+  reviewsReceived    Review[]         @relation("ReviewsReceived")
+  reviewResponses    ReviewResponse[] @relation("ReviewResponses")
+  reviewReports      ReviewReport[]   @relation("ReviewReports")
 
   @@index([status])
   @@map("users")
@@ -203,17 +241,17 @@ model PasswordResetToken {
 }
 
 model Pet {
-  id          String      @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   species     PetSpecies
-  status      PetStatus   @default(AVAILABLE)
+  status      PetStatus  @default(AVAILABLE)
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?     @map("image_url")
+  imageUrl    String?    @map("image_url")
 
-  currentOwnerId String?  @map("current_owner_id")
-  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
+  currentOwnerId String? @map("current_owner_id")
+  currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   // Location of the listing. Coordinates are stored rounded to ~100 m
   // (3 decimal places, see PetsService.roundCoordinate) so an owner's exact
@@ -251,12 +289,13 @@ model Adoption {
   ownerId String @map("owner_id")
   owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String?  @unique @map("escrow_id")
+  escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
-  
+
   documents Document[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  reviews   Review[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([adopterId])
@@ -265,13 +304,13 @@ model Adoption {
 }
 
 model Custody {
-  id       String        @id @default(uuid())
-  status   CustodyStatus @default(ACTIVE)
-  type     CustodyType
+  id     String        @id @default(uuid())
+  status CustodyStatus @default(ACTIVE)
+  type   CustodyType
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
-  startDate DateTime @map("start_date")
+  startDate DateTime  @map("start_date")
   endDate   DateTime?
 
   petId String @map("pet_id")
@@ -282,6 +321,8 @@ model Custody {
 
   escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
+
+  reviews Review[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -294,17 +335,17 @@ model Custody {
 model Escrow {
   id String @id @default(uuid())
 
-  stellarPublicKey String @unique @map("stellar_public_key")
+  stellarPublicKey       String @unique @map("stellar_public_key")
   stellarSecretEncrypted String @map("stellar_secret_encrypted")
 
-  assetCode String @default("XLM") @map("asset_code")
+  assetCode   String  @default("XLM") @map("asset_code")
   assetIssuer String? @map("asset_issuer")
 
   amount Decimal @db.Decimal(12, 2)
 
-  fundingTxHash  String? @map("funding_tx_hash")
-  releaseTxHash  String? @map("release_tx_hash")
-  refundTxHash   String? @map("refund_tx_hash")
+  fundingTxHash String? @map("funding_tx_hash")
+  releaseTxHash String? @map("release_tx_hash")
+  refundTxHash  String? @map("refund_tx_hash")
 
   requiredSignatures Int @default(2)
 
@@ -333,10 +374,10 @@ model AppLog {
 }
 
 model EventLog {
-  id          String           @id @default(uuid())
-  entityType  EventEntityType  @map("entity_type")
-  entityId    String           @map("entity_id")
-  eventType   EventType        @map("event_type")
+  id         String          @id @default(uuid())
+  entityType EventEntityType @map("entity_type")
+  entityId   String          @map("entity_id")
+  eventType  EventType       @map("event_type")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
@@ -346,6 +387,8 @@ model EventLog {
 
   payload  Json
   metadata Json?
+
+  trustSources TrustEventSource[]
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -367,8 +410,8 @@ model Document {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
-  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+  adoption   Adoption @relation(fields: [adoptionId], references: [id])
 
   @@map("documents")
 }
@@ -390,4 +433,127 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+model TrustEventSource {
+  sourceEventId String   @id @map("source_event_id")
+  event         EventLog @relation(fields: [sourceEventId], references: [id], onDelete: Cascade)
+  processedAt   DateTime @default(now()) @map("processed_at")
+
+  trustEvents TrustEvent[]
+
+  @@index([processedAt])
+  @@map("trust_event_sources")
+}
+
+model TrustEvent {
+  id            String           @id @default(uuid())
+  sourceEventId String           @map("source_event_id")
+  source        TrustEventSource @relation(fields: [sourceEventId], references: [sourceEventId], onDelete: Cascade)
+
+  subjectUserId String @map("subject_user_id")
+  subject       User   @relation("TrustEventSubjects", fields: [subjectUserId], references: [id], onDelete: Cascade)
+
+  type       TrustEventType
+  occurredAt DateTime       @map("occurred_at")
+  weight     Float          @default(1)
+  payload    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([sourceEventId, subjectUserId, type])
+  @@index([subjectUserId, occurredAt])
+  @@index([type])
+  @@map("trust_events")
+}
+
+model TrustScore {
+  userId String @id @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  score            Float
+  band             String
+  algorithmVersion String @map("algorithm_version")
+  factors          Json
+  eventCount       Int    @default(0) @map("event_count")
+
+  completedAgreements      Int @default(0) @map("completed_agreements")
+  disputesTotal            Int @default(0) @map("disputes_total")
+  disputesResolvedInFavour Int @default(0) @map("disputes_resolved_in_favour")
+
+  anchoredThrough String?  @map("anchored_through")
+  calculatedAt    DateTime @map("calculated_at")
+
+  @@index([score])
+  @@index([algorithmVersion])
+  @@map("trust_scores")
+}
+
+model Review {
+  id String @id @default(uuid())
+
+  rating Int
+  title  String
+  body   String
+
+  reviewerId String @map("reviewer_id")
+  reviewer   User   @relation("ReviewsWritten", fields: [reviewerId], references: [id])
+
+  subjectId String @map("subject_id")
+  subject   User   @relation("ReviewsReceived", fields: [subjectId], references: [id])
+
+  agreementType ReviewAgreementType @map("agreement_type")
+  adoptionId    String?             @map("adoption_id")
+  custodyId     String?             @map("custody_id")
+  adoption      Adoption?           @relation(fields: [adoptionId], references: [id], onDelete: Cascade)
+  custody       Custody?            @relation(fields: [custodyId], references: [id], onDelete: Cascade)
+
+  response ReviewResponse?
+  reports  ReviewReport[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([subjectId, createdAt])
+  @@index([reviewerId])
+  @@index([adoptionId])
+  @@index([custodyId])
+  @@map("reviews")
+}
+
+model ReviewResponse {
+  id String @id @default(uuid())
+
+  reviewId String @unique @map("review_id")
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  responderId String @map("responder_id")
+  responder   User   @relation("ReviewResponses", fields: [responderId], references: [id])
+
+  body String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([responderId])
+  @@map("review_responses")
+}
+
+model ReviewReport {
+  id String @id @default(uuid())
+
+  reviewId String @map("review_id")
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  reporterId String @map("reporter_id")
+  reporter   User   @relation("ReviewReports", fields: [reporterId], references: [id])
+
+  reason  ReviewReportReason
+  details String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([reviewId, reporterId])
+  @@index([reason])
+  @@map("review_reports")
 }
