@@ -6,10 +6,14 @@ import {
   AdoptionStatus,
   EventEntityType,
   EventType,
+  Prisma,
 } from '@prisma/client';
 import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { PetStatus } from '../common/enums/pet-status.enum';
+import { FeeCalculationService } from '../payments/fees/fee-calculation.service';
+import { FeeScheduleService } from '../payments/fees/fee-schedule.service';
+import { PaymentLedgerService } from '../payments/ledger/payment-ledger.service';
 
 @Injectable()
 export class EscrowService {
@@ -18,9 +22,12 @@ export class EscrowService {
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
     private readonly petAvailabilityService: PetAvailabilityService,
+    private readonly feeCalculation: FeeCalculationService,
+    private readonly feeSchedules: FeeScheduleService,
+    private readonly ledger: PaymentLedgerService,
   ) {}
 
-  async createEscrow(amount: number, tx?: any) {
+  async createEscrow(amount: number, tx?: Prisma.TransactionClient) {
     const prismaClient = tx || this.prisma;
 
     // Generate Stellar keypair placeholders
@@ -28,12 +35,17 @@ export class EscrowService {
     const stellarPublicKey = `ESCROW_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const stellarSecretEncrypted = `ENCRYPTED_SECRET_${Date.now()}`;
 
+    // Pin the fee version now so later schedule changes cannot alter this
+    // agreement's settlement. Legacy databases may have no schedule yet.
+    const schedule = await this.feeSchedules.findEffective(new Date());
+
     return prismaClient.escrow.create({
       data: {
         stellarPublicKey,
         stellarSecretEncrypted,
         amount,
         status: 'CREATED',
+        feeScheduleId: schedule?.id ?? null,
       },
     });
   }
@@ -42,7 +54,7 @@ export class EscrowService {
     return this.prisma.$transaction(async (tx) => {
       const escrow = await tx.escrow.findUnique({
         where: { id: escrowId },
-        include: { adoption: true },
+        include: { adoption: { include: { pet: true } } },
       });
 
       if (!escrow) {
@@ -65,6 +77,28 @@ export class EscrowService {
         txHash,
         payload: { amount: Number(escrow.amount) },
       });
+
+      const schedule = await this.feeCalculation.resolveForAgreement(
+        escrow.feeScheduleId,
+        escrow.createdAt,
+      );
+      const settlement = this.feeCalculation.calculate({
+        schedule,
+        amount: Number(escrow.amount),
+        currency: escrow.assetCode,
+        species: escrow.adoption?.pet?.species,
+      });
+      await this.ledger.recordFee(
+        {
+          amount: settlement.total,
+          currency: settlement.currency,
+          escrowId,
+          feeScheduleId: schedule.id,
+          occurredAt: new Date(),
+          metadata: settlement as unknown as Record<string, unknown>,
+        },
+        tx,
+      );
 
       // 2. If escrow is tied to an Adoption, update Adoption and Pet
       if (escrow.adoption) {
@@ -131,6 +165,18 @@ export class EscrowService {
         txHash,
         payload: { amount: Number(escrow.amount) },
       });
+
+      await this.ledger.recordRefund(
+        {
+          amount: Number(escrow.amount),
+          currency: escrow.assetCode,
+          escrowId,
+          feeScheduleId: escrow.feeScheduleId ?? undefined,
+          occurredAt: new Date(),
+          metadata: { refundTxHash: txHash },
+        },
+        tx,
+      );
 
       return updatedEscrow;
     });

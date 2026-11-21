@@ -6,7 +6,11 @@ import { AppLogger } from './common/logger/logger.service';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
-import express from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import { config as dotenvConfig } from 'dotenv';
 import { ErrorResponseDto } from './common/dto/error-response.dto';
 import { ErrorDetailDto } from './common/dto/error-response.dto';
@@ -23,9 +27,13 @@ validateEnv();
 const API_PREFIX = 'api/v1';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.use((req: any, res: any, next: () => void) => {
-    const cookieHeader = req.headers.cookie;
+  // `rawBody` is required for HMAC verification of inbound webhooks. Nest
+  // attaches the unmodified bytes before JSON parsing so signatures can be
+  // checked against exactly what the provider signed.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    const request = req as Request & { cookies: Record<string, string> };
+    const cookieHeader = request.headers.cookie;
     if (cookieHeader) {
       const cookies: Record<string, string> = {};
       cookieHeader.split(';').forEach((cookie: string) => {
@@ -34,9 +42,9 @@ async function bootstrap() {
           cookies[parts[0].trim()] = decodeURIComponent(parts[1].trim());
         }
       });
-      req.cookies = cookies;
+      request.cookies = cookies;
     } else {
-      req.cookies = {};
+      request.cookies = {};
     }
     next();
   });
@@ -100,8 +108,8 @@ async function bootstrap() {
 
   // 5. Environment-driven proxy trust.
   if (trustProxy) {
-    app.use((req, res, next) => {
-      req['trust proxy'] = 1;
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      (req as unknown as Record<string, unknown>)['trust proxy'] = 1;
       next();
     });
   }

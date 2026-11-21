@@ -120,6 +120,47 @@ enum LogLevel {
   ERROR
 }
 
+enum PaymentLedgerEntryType {
+  FEE_COLLECTED
+  FEE_REFUNDED
+}
+
+enum ReportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum WebhookDeliveryStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  SKIPPED
+}
+
+enum ReviewStatus {
+  VISIBLE
+  FLAGGED
+  HIDDEN
+}
+
+enum AbuseSignalType {
+  RECIPROCAL_REVIEW
+  REVIEW_RING
+  REPEATED_AGREEMENT
+  NEW_ACCOUNT_BURST
+  SHARED_DEVICE
+  SHARED_IP
+}
+
+enum AbuseFlagStatus {
+  PENDING
+  CONFIRMED
+  DISMISSED
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
@@ -310,6 +351,11 @@ model Escrow {
 
   status EscrowStatus @default(CREATED)
 
+  // Snapshot of the fee schedule in force when the payment agreement was
+  // created. Settlements always use this version, never the current one.
+  feeScheduleId String? @map("fee_schedule_id")
+  feeSchedule   FeeSchedule? @relation(fields: [feeScheduleId], references: [id])
+
   adoption Adoption?
   custody  Custody?
 
@@ -317,7 +363,131 @@ model Escrow {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
+  @@index([feeScheduleId])
   @@map("escrows")
+}
+
+model FeeSchedule {
+  id            String   @id @default(uuid())
+  version       Int      @unique
+  effectiveFrom DateTime @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+
+  // Basis points (1/100th of a percent) avoid floating point drift.
+  platformFeeBps Int     @map("platform_fee_bps")
+  minimumFee     Decimal @db.Decimal(12, 2) @map("minimum_fee")
+  currency       String  @default("XLM")
+  latePenaltyBps Int     @map("late_penalty_bps")
+
+  // JSON rule tables keyed by species then size (e.g. { DOG: { LARGE: ... } }).
+  depositRules          Json @map("deposit_rules")
+  dailyCustodyRates     Json @map("daily_custody_rates")
+  cancellationLeadTimes Json @map("cancellation_lead_times")
+
+  notes     String?
+  createdBy String? @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  escrows Escrow[]
+
+  @@index([effectiveFrom, effectiveTo])
+  @@map("fee_schedules")
+}
+
+model PaymentLedgerEntry {
+  id        String                @id @default(uuid())
+  type      PaymentLedgerEntryType
+  amount    Decimal               @db.Decimal(12, 2)
+  currency  String
+  escrowId  String?               @map("escrow_id")
+  feeScheduleId String?           @map("fee_schedule_id")
+  occurredAt DateTime             @map("occurred_at")
+  metadata  Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([type, escrowId])
+  @@index([type, occurredAt])
+  @@index([currency, occurredAt])
+  @@map("payment_ledger_entries")
+}
+
+model RevenueReportJob {
+  id            String         @id @default(uuid())
+  requestedById String?        @map("requested_by_id")
+  fromDate      DateTime       @map("from_date")
+  toDate        DateTime       @map("to_date")
+  groupBy       String         @map("group_by")
+  format        String
+  status        ReportJobStatus @default(PENDING)
+  result        Json?
+  csvContent    String?        @db.Text @map("csv_content")
+  errorMessage  String?        @map("error_message")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("revenue_report_jobs")
+}
+
+model WebhookEvent {
+  id         String               @id @default(uuid())
+  provider   String
+  eventId    String               @map("event_id")
+  eventType  String?              @map("event_type")
+  payload    Json
+  status     WebhookDeliveryStatus @default(RECEIVED)
+  attempts   Int                  @default(0)
+  error      String?
+  receivedAt DateTime             @default(now()) @map("received_at")
+  processedAt DateTime?           @map("processed_at")
+  createdAt  DateTime             @default(now()) @map("created_at")
+
+  @@unique([provider, eventId])
+  @@index([status, receivedAt])
+  @@map("webhook_events")
+}
+
+model Review {
+  id         String       @id @default(uuid())
+  reviewerId String       @map("reviewer_id")
+  revieweeId String       @map("reviewee_id")
+  agreementId String?     @map("agreement_id")
+  rating     Int
+  comment    String?
+  deviceHash String?      @map("device_hash")
+  ipHash     String?      @map("ip_hash")
+  status     ReviewStatus @default(VISIBLE)
+  weight     Float        @default(1)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@index([revieweeId, status])
+  @@index([reviewerId])
+  @@index([createdAt])
+  @@map("reviews")
+}
+
+model AbuseSignal {
+  id                String         @id @default(uuid())
+  type              AbuseSignalType
+  reviewId          String?        @map("review_id")
+  subjectUserId     String?        @map("subject_user_id")
+  actorUserId       String?        @map("actor_user_id")
+  counterpartyUserId String?       @map("counterparty_user_id")
+  hashedValue       String?        @map("hashed_value")
+  reason            String
+  severity          Int            @default(1)
+  metadata          Json?
+  status            AbuseFlagStatus @default(PENDING)
+  resolutionNote    String?        @map("resolution_note")
+  resolvedById      String?        @map("resolved_by_id")
+  resolvedAt        DateTime?      @map("resolved_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([reviewId])
+  @@index([type])
+  @@map("abuse_signals")
 }
 
 model AppLog {
