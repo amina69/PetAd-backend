@@ -12,6 +12,7 @@ enum UserRole {
   USER
   ADMIN
   SHELTER
+  ANALYST
 }
 
 enum UserStatus {
