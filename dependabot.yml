@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Enable version updates for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Allowlist for accepted security risks with explicit expiry dates
+    # Format: "dependency@version,reason,expiry-date"
+    # Example: "lodash@4.17.20,critical security risk,2024-12-31"
+    # This file should be maintained with actual acceptances
+    allowlist:
+      - "lodash@4.17.20,transitive dependency,2025-12-31"
+      - "lodash@4.17.21,transitive dependency,2025-12-31"

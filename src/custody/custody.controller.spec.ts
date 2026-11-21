@@ -5,6 +5,7 @@ import type { CreateCustodyDto } from './dto/create-custody.dto';
 import type { CustodyResponseDto } from './dto/custody-response.dto';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 describe('CustodyController', () => {
   let controller: CustodyController;
@@ -17,6 +18,34 @@ describe('CustodyController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CustodyController],
+      imports: [
+        ThrottlerModule.forRoot([
+          {
+            ttl: 60000,
+            limit: 100,
+          },
+          {
+            ttl: 60000,
+            limit: 10,
+            name: 'auth',
+          },
+          {
+            ttl: 60000,
+            limit: 20,
+            name: 'write',
+          },
+          {
+            ttl: 60000,
+            limit: 5,
+            name: 'expensive',
+          },
+          {
+            ttl: 60000,
+            limit: 30,
+            name: 'public-verify',
+          },
+        ]),
+      ],
       providers: [
         {
           provide: CustodyService,

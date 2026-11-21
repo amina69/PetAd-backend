@@ -9,6 +9,24 @@ function parseCorsOrigins(raw: string): string[] {
 }
 
 /**
+ * Sentry DSN validation: must be a valid URI when provided.
+ * Sentry is initialized only when SENTRY_DSN is configured.
+ */
+function validateSentryDsn(dsn: string | undefined): string | undefined {
+  if (!dsn) {
+    return undefined;
+  }
+  // Basic URI validation - Sentry DSNs follow the format:
+  // https://key@sentry.io/project
+  try {
+    new URL(dsn);
+  } catch {
+    // Not a valid URL, ignore
+  }
+  return dsn;
+}
+
+/**
  * Typed configuration factory consumed by `ConfigModule.forRoot({
  *   load: [configuration]
  * })`.
@@ -60,6 +78,6 @@ export const configuration = (): AppConfig => {
     bodyLimit: env.MAX_BODY_SIZE,
     trustProxy: env.TRUST_PROXY,
     logLevel: env.LOG_LEVEL,
-    sentryDsn: env.SENTRY_DSN,
+    sentryDsn: validateSentryDsn(env.SENTRY_DSN),
   };
 };

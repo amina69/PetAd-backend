@@ -9,13 +9,16 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import crypto from 'crypto';
+import * as Sentry from '@sentry/node';
+import { AppConfig } from '../../config/env.schema';
 import { ErrorCode } from '../exceptions/error-codes';
 import { ERROR_CODE_STATUS } from '../exceptions/error-codes';
 import { AppException } from '../exceptions/app.exception';
 import { LoggingService } from '../../logging/logging.service';
 
-/** Prisma error codes we map to structured HTTP errors. */
+/**
+ * Prisma error codes we map to structured HTTP errors.
+ */
 const PRISMA_ERROR_CODES: Record<string, { status: number; code: ErrorCode }> = {
   P2002: { status: HttpStatus.CONFLICT, code: 'UNIQUE_CONSTRAINT' },
   P2025: { status: HttpStatus.NOT_FOUND, code: 'NOT_FOUND' },
@@ -35,6 +38,25 @@ interface StandardErrorResponse {
   path: string;
 }
 
+/**
+ * Sentry initialization state.
+ * Sentry is configured once at module load time based on the SENTRY_DSN.
+ */
+let sentryInitialized = false;
+
+/**
+ * Sentry exception filter that captures 5xx errors and unhandled job failures,
+ * while ignoring expected 4xx errors. Integrates with the application's
+ * standardized error response envelope.
+ *
+ * Features:
+ * - Sentry integration, enabled only when SENTRY_DSN is configured
+ * - Captures 5xx errors and unhandled job failures
+ * - Includes release and environment information
+ * - beforeSend removes request bodies, headers, tokens, emails, and other PII
+ * - Only attaches the authenticated user's ID as user context
+ * - Ignores expected 4xx errors
+ */
 @Injectable()
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -46,6 +68,163 @@ export class HttpExceptionFilter implements ExceptionFilter {
   ) {
     this.isProduction =
       this.configService.get<string>('nodeEnv', 'development') === 'production';
+
+    // Initialize Sentry once if DSN is configured
+    this.initializeSentry();
+  }
+
+  /**
+   * Initialize Sentry if SENTRY_DSN is configured.
+   * Must be called once during application bootstrap.
+   */
+  private initializeSentry(): void {
+    if (sentryInitialized) {
+      return;
+    }
+
+    const dsn = this.configService.get<string>('sentryDsn');
+
+    if (!dsn) {
+      // Sentry is disabled - no events are sent
+      return;
+    }
+
+    // Configure Sentry with DSN and environment info
+    Sentry.init({
+      dsn,
+      environment: this.configService.get<string>('nodeEnv', 'development'),
+      release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
+
+      // Set up tracing for performance monitoring
+      tracesSampleRate: 0.1,
+
+      // beforeSend hook to remove PII and sensitive data
+      beforeSend: (event) => {
+        // Remove request bodies
+        if (event.request && event.request.body) {
+          event.request.body = '[redacted]';
+        }
+
+        // Remove cookies and authorization headers
+        if (event.request && event.request.headers) {
+          const headers: Record<string, string> = {};
+          for (const [key, value] of Object.entries(event.request.headers)) {
+            const lowerKey = key.toLowerCase();
+            if (
+              lowerKey === 'authorization' ||
+              lowerKey === 'cookie' ||
+              lowerKey === 'x-request-id' ||
+              lowerKey === 'x-email' ||
+              lowerKey === 'x-user-email'
+            ) {
+              continue;
+            }
+            headers[key] = value;
+          }
+          event.request.headers = headers;
+        }
+
+        // Remove user PII from context
+        if (event.user && event.user.id) {
+          // Keep only the user ID - strip email and other PII
+          event.user = {
+            id: String(event.user.id),
+          };
+        }
+
+        // Remove PII from extra context
+        this.removePIIFromEvent(event);
+
+        return event;
+      },
+
+      // Ignore 4xx errors (client errors that are expected)
+      ignoreErrors: [
+        '400',
+        '401',
+        '403',
+        '404',
+        '409',
+        '415',
+        '422',
+        '429',
+      ],
+
+      // Set tags for release and environment
+      tags: {
+        environment: this.configService.get<string>('nodeEnv', 'development'),
+      },
+
+      // Set default tags
+      defaultIntegrations: false,
+
+      // Release information
+      release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
+    });
+
+    sentryInitialized = true;
+  }
+
+  /**
+   * Remove PII from event data structures
+   */
+  private removePIIFromEvent(event: any): void {
+    // Sanitize extra context
+    if (event.extra) {
+      for (const key of Object.keys(event.extra)) {
+        const value = event.extra[key];
+        if (typeof value === 'string') {
+          // Redact potential PII values
+          if (this.isPotentiallyPII(value)) {
+            event.extra[key] = '[redacted]';
+          }
+        }
+      }
+    }
+
+    // Sanitize tags
+    if (event.tags) {
+      for (const key of Object.keys(event.tags)) {
+        const value = event.tags[key];
+        if (typeof value === 'string' && this.isPotentiallyPII(value)) {
+          event.tags[key] = '[redacted]';
+        }
+      }
+    }
+
+    // Sanitize labels
+    if (event.labels) {
+      for (const key of Object.keys(event.labels)) {
+        const value = event.labels[key];
+        if (typeof value === 'string' && this.isPotentiallyPII(value)) {
+          event.labels[key] = '[redacted]';
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if a string value might contain PII
+   */
+  private isPotentiallyPII(value: string): boolean {
+    const lower = value.toLowerCase();
+    // Check for email patterns
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return true;
+    }
+    // Check for token-like values (short hex strings)
+    if (/^[a-f0-9]{16,64}$/.test(value) || /^[a-f0-9]{8,}$/.test(value)) {
+      return true;
+    }
+    // Check for common email/token patterns
+    if (lower.includes('token') || lower.includes('secret') || lower.includes('key')) {
+      return true;
+    }
+    // Check for email-like patterns (but not URLs)
+    if (lower.includes('@') && lower.includes('.') && !lower.includes('http')) {
+      return true;
+    }
+    return false;
   }
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
@@ -56,6 +235,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const requestId: string =
       (request as any).requestId ??
       request.headers['x-request-id'] ??
+      Sentry.getCurrentHub().getScope()?.getTransaction()?.getId() ??
       crypto.randomUUID();
 
     const mapped = this.mapException(exception, this.isProduction);
@@ -69,6 +249,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       user?: { sub?: string; userId?: string };
     };
 
+    // Log the error (always log, even for 4xx)
     await this.loggingService.log({
       level: 'ERROR',
       action: 'HTTP_EXCEPTION',
@@ -91,7 +272,68 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
     };
 
+    // Capture 5xx errors in Sentry; ignore 4xx errors
+    const statusNum: number = status;
+    if (statusNum >= 500) {
+      this.captureInSentry(exception, request, requestId);
+    } else if (statusNum >= 400 && statusNum < 500) {
+      // Expected 4xx errors - do not capture in Sentry
+      // The standardized response is already sent above
+    }
+
     response.status(status).json(body);
+  }
+
+  /**
+   * Capture exception in Sentry with user context and PII removal.
+   */
+  private captureInSentry(
+    exception: unknown,
+    request: Request,
+    requestId: string,
+  ): void {
+    const userId = this.extractUserId(request);
+
+    Sentry.withScope((scope) => {
+      // Set the user context - only authenticated user's ID
+      if (userId) {
+        scope.setUser({ id: userId });
+      }
+
+      // Add request context
+      scope.setTag('requestId', requestId);
+      scope.setTag('path', request.url);
+      scope.setTag('method', request.method);
+      scope.setTag('environment', this.configService.get<string>('nodeEnv', 'development'));
+
+      // Capture the exception
+      Sentry.captureException(exception);
+    });
+  }
+
+  /**
+   * Extract the authenticated user's ID from the request.
+   * Only the user ID is used as Sentry context - no email or other PII.
+   */
+  private extractUserId(request: Request): string | null {
+    try {
+      const user = (request as any).user;
+
+      if (!user) {
+        return null;
+      }
+
+      // Accept either `sub` or `userId` from the JWT payload
+      const userId = user.sub ?? user.userId;
+
+      if (!userId) {
+        return null;
+      }
+
+      return String(userId);
+    } catch {
+      return null;
+    }
   }
 
   private mapException(

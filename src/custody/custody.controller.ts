@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { CheckPolicy } from '../common/policies/check-policy.decorator';
 import { PolicyAction, PolicySubject } from '../common/policies/policy.types';
 import {

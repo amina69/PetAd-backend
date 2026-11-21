@@ -6,9 +6,10 @@ import {
   HttpCode,
   HttpStatus,
   Req,
-Res,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import {

@@ -40,6 +40,8 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.1",
+    "@sentry/node": "^11.16.0",
+    "@sentry/tracing": "^7.120.4",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
     "bull": "^4.16.5",

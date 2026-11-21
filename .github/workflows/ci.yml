@@ -70,6 +70,35 @@ jobs:
       - name: Run e2e tests
         run: npm run test:e2e
 
+      # ─── Security: npm audit ─────────────────────────────
+      - name: npm audit --audit-level=high
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      # ─── Security: Gitleaks secret scanning ──────────────
+      - name: Gitleaks secret scanning
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+
+      # ─── Security: CodeQL scanning ───────────────────────
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Build CodeQL databases
+        run: codeql database build --language=javascript-typescript
+
+      - name: CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+      # ─── Security: Trivy Docker image scanning ────────────
+      - name: Trivy vulnerability scan
+        run: |
+          trivy image --exit-code 1 --severity HIGH,CRITICAL node:20
+
   # ─── Step 2: Build Check ─────────────────────────────────
   build:
     name: Build Check
@@ -141,3 +170,10 @@ jobs:
 
       - name: Deploy placeholder
         run: echo "✅ Tests and build passed. Add your deploy command above."
+
+  # ─── Dependabot automated security updates ───────────────
+  # Dependabot is configured via the dependabot.yml file at the repository root.
+  # It enables weekly grouped updates for dependency packages.
+  # Updated dependencies will create pull requests that can be reviewed and merged.
+  # Review rule: developers need to approve dependency updates.
+  # Requires: GITHUB_TOKEN with pull permissions
