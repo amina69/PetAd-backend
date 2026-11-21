@@ -3,10 +3,11 @@ import { EventsService } from './events.service';
 import { EventLedgerService } from './event-ledger.service';
 import { EventLedgerController } from './event-ledger.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Global()
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AnalyticsModule],
   controllers: [EventLedgerController],
   providers: [EventsService, EventLedgerService],
   exports: [EventsService, EventLedgerService],

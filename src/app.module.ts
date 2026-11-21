@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
+import { APP_INTERCEPTOR, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -15,11 +15,13 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { SanitizePipe } from './common/pipes/sanitize.pipe';
 
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { configuration } from './config/configuration';
 
 @Module({
@@ -55,12 +57,17 @@ import { configuration } from './config/configuration';
     JobsModule,
     AdminModule,
     EventLedgerModule,
+    AnalyticsModule,
   ],
 
   controllers: [AppController],
   providers: [
     AppService,
     HttpExceptionFilter,
+    {
+      provide: APP_PIPE,
+      useClass: SanitizePipe,
+    },
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

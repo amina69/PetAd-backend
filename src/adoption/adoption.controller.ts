@@ -12,6 +12,7 @@ import {
   BadRequestException,
   UploadedFiles,
   InternalServerErrorException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -31,6 +32,7 @@ import { CurrentUser as GetUser } from '../auth/decorators/current-user.decorato
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { CheckPolicy } from '../common/policies/check-policy.decorator';
 import { PolicyAction, PolicySubject } from '../common/policies/policy.types';
+import { ApprovalResponseDto } from '../common/dto/api-contracts.dto';
 
 interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string; sub?: string };
@@ -68,11 +70,15 @@ export class AdoptionController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Approve a pending adoption request (Admin only)' })
-  @ApiResponse({ status: 200, description: 'Adoption approved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Adoption approved successfully',
+    type: ApprovalResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Adoption not found' })
   @ApiResponse({ status: 422, description: 'Invalid status transition' })
-  approveAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
+  approveAdoption(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.adoptionService.approveAdoption(
       id,
       (req.user.userId || req.user.sub) as string,
@@ -88,13 +94,17 @@ export class AdoptionController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Reject a pending adoption request (Admin only)' })
-  @ApiResponse({ status: 200, description: 'Adoption rejected successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Adoption rejected successfully',
+    type: ApprovalResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
   @ApiResponse({ status: 404, description: 'Adoption not found' })
   @ApiResponse({ status: 422, description: 'Invalid status transition' })
   rejectAdoption(
     @Req() req: AuthRequest,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RejectAdoptionDto,
   ) {
     return this.adoptionService.rejectAdoption(
@@ -112,7 +122,7 @@ export class AdoptionController {
   @Patch(':id/complete')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
-  completeAdoption(@Req() req: AuthRequest, @Param('id') id: string) {
+  completeAdoption(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.adoptionService.updateAdoptionStatus(id, req.user.userId, {
       status: 'COMPLETED',
     });
@@ -143,7 +153,7 @@ export class AdoptionController {
     }),
   )
   async uploadDocuments(
-    @Param('id') adoptionId: string,
+    @Param('id', ParseUUIDPipe) adoptionId: string,
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: AuthRequest,
   ) {
@@ -165,7 +175,7 @@ export class AdoptionController {
   @ApiOperation({ summary: 'Get one adoption (participant or admin only)' })
   @ApiResponse({ status: 200, description: 'Adoption found' })
   @ApiResponse({ status: 404, description: 'Adoption not found' })
-  getAdoption(@Param('id') id: string) {
+  getAdoption(@Param('id', ParseUUIDPipe) id: string) {
     return this.adoptionService.findOne(id);
   }
 

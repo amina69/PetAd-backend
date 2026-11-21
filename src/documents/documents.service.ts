@@ -7,6 +7,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole } from '@prisma/client';
+import {
+  assertSupportedDocument,
+  safePathSegment,
+  sanitizeFileName,
+} from '../common/pipes';
 
 @Injectable()
 export class DocumentsService {
@@ -76,13 +81,14 @@ export class DocumentsService {
     }[] = [];
 
     for (const file of files) {
+      assertSupportedDocument(file);
       const result = await this.cloudinary.uploadDocument(
         file.buffer,
-        `adoptions/${adoptionId}`,
+        `adoptions/${safePathSegment(adoptionId)}`,
       );
 
       uploadedResults.push({
-        fileName: file.originalname,
+        fileName: sanitizeFileName(file.originalname),
         fileUrl: result.secure_url,
         publicId: result.public_id,
         mimeType: file.mimetype,

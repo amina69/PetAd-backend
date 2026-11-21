@@ -3,6 +3,7 @@ import { EventLedgerService } from './event-ledger.service';
 import { EventLedgerRepository } from './event-ledger.repository';
 import { EventLedgerController } from './event-ledger.controller';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 /**
  * Global module for the Event Ledger — the append-only event store.
@@ -12,7 +13,7 @@ import { PrismaModule } from '../prisma/prisma.module';
  */
 @Global()
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AnalyticsModule],
   controllers: [EventLedgerController],
   providers: [EventLedgerService, EventLedgerRepository],
   exports: [EventLedgerService, EventLedgerRepository],

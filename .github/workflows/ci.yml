@@ -71,10 +71,80 @@ jobs:
         run: npm run test:e2e
 
   # ─── Step 2: Build Check ─────────────────────────────────
+  contract:
+    name: OpenAPI Contracts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://petad:petadpassword@localhost:5432/petad_db
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: test-super-secret-jwt-key-for-ci-pipeline
+      JWT_EXPIRATION: 7d
+      PORT: 3000
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run contract tests
+        run: npm run test:contract
+
+      - name: Verify exported OpenAPI spec is up to date
+        run: npm run check:openapi
+
+      - name: Upload OpenAPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: docs/openapi.json
+          retention-days: 30
+
+      - name: Prepare base spec for breaking-change detection
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --depth=1 origin ${{ github.base_ref }}
+          if git cat-file -e 'origin/${{ github.base_ref }}:docs/openapi.json' 2>/dev/null; then
+            git show 'origin/${{ github.base_ref }}:docs/openapi.json' > /tmp/base-openapi.json
+          else
+            cp docs/openapi.json /tmp/base-openapi.json
+          fi
+
+      - name: Detect breaking API changes
+        if: github.event_name == 'pull_request'
+        uses: oasdiff/oasdiff-action/breaking@v0
+        with:
+          base: /tmp/base-openapi.json
+          revision: docs/openapi.json
+          fail-on: ERR
+
   build:
     name: Build Check
     runs-on: ubuntu-latest
-    needs: test # Only runs if tests pass
+    needs: [test, contract] # Only runs if tests and contracts pass
 
     steps:
       - name: Checkout code
@@ -91,6 +161,9 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
 
       - name: Build application
         run: npm run build

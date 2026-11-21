@@ -43,6 +43,17 @@ enum PetStatus {
   ADOPTED
 }
 
+enum PetGender {
+  MALE
+  FEMALE
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 enum AdoptionStatus {
   REQUESTED
   PENDING
@@ -96,6 +107,10 @@ enum EventType {
   ADOPTION_REJECTED
   ADOPTION_CANCELLED
   ADOPTION_COMPLETED
+  ADOPTION_ESCROW_CREATED
+  ADOPTION_ESCROW_FUNDED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
   CUSTODY_CREATED
   CUSTODY_STARTED
   CUSTODY_COMPLETED
@@ -209,6 +224,8 @@ model Pet {
   status      PetStatus   @default(AVAILABLE)
   breed       String?
   age         Int?
+  gender      PetGender?
+  size        PetSize?
   description String?
   imageUrl    String?     @map("image_url")
 
@@ -390,4 +407,82 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+// ─── Analytics read models ────────────────────────────────
+
+model DailyAdoption {
+  date      DateTime @db.Date
+  species   String   @default("UNKNOWN")
+  ageBand   String   @default("UNKNOWN") @map("age_band")
+  size      String   @default("UNKNOWN")
+  region    String   @default("UNKNOWN")
+  shelterId String   @default("UNKNOWN") @map("shelter_id")
+
+  requested Int @default(0)
+  approved  Int @default(0)
+  funded    Int @default(0)
+  completed Int @default(0)
+  rejected  Int @default(0)
+  cancelled Int @default(0)
+  expired   Int @default(0)
+
+  @@id([date, species, ageBand, size, region, shelterId])
+  @@index([date])
+  @@map("daily_adoptions")
+}
+
+model DailyCustody {
+  date      DateTime @db.Date
+  species   String   @default("UNKNOWN")
+  region    String   @default("UNKNOWN")
+  shelterId String   @default("UNKNOWN") @map("shelter_id")
+
+  created   Int @default(0)
+  started   Int @default(0)
+  completed Int @default(0)
+  returned  Int @default(0)
+  cancelled Int @default(0)
+  violation Int @default(0)
+
+  @@id([date, species, region, shelterId])
+  @@index([date])
+  @@map("daily_custody")
+}
+
+model DailyDispute {
+  date      DateTime @db.Date
+  species   String   @default("UNKNOWN")
+  region    String   @default("UNKNOWN")
+  shelterId String   @default("UNKNOWN") @map("shelter_id")
+
+  opened   Int @default(0)
+  resolved Int @default(0)
+
+  @@id([date, species, region, shelterId])
+  @@index([date])
+  @@map("daily_disputes")
+}
+
+model DailyUser {
+  date       DateTime @db.Date
+  region     String   @default("UNKNOWN")
+  shelterId  String   @default("UNKNOWN") @map("shelter_id")
+  registered Int      @default(0)
+  suspended  Int      @default(0)
+  reinstated Int      @default(0)
+  deleted    Int      @default(0)
+
+  @@id([date, region, shelterId])
+  @@index([date])
+  @@map("daily_users")
+}
+
+model AnalyticsProjectionState {
+  key             String    @id
+  lastProcessedAt DateTime? @map("last_processed_at")
+  lastRunAt       DateTime  @default(now()) @map("last_run_at")
+  rowCount        Int       @default(0) @map("row_count")
+
+  @@map("analytics_projection_state")
 }

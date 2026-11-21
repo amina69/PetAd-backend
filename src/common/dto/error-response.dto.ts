@@ -25,7 +25,10 @@ export class ErrorResponseDto {
   @ApiProperty({ example: 'VALIDATION_ERROR', description: 'Stable error code' })
   code: string;
 
-  @ApiProperty({ description: 'Human-readable error message' })
+  @ApiProperty({
+    description: 'Human-readable error message',
+    oneOf: [{ type: 'string' }, { type: 'object' }],
+  })
   message: string | object;
 
   @ApiPropertyOptional({
