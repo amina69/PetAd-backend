@@ -24,9 +24,11 @@ import {
 } from '../auth/decorators/current-user.decorator';
 import { AnalyticsService } from './analytics.service';
 import { ShelterAnalyticsService } from './shelter-analytics.service';
+import { GeoAnalyticsService } from './geo-analytics.service';
 import { AnalyticsOverviewQueryDto } from './dto/analytics-overview-query.dto';
 import { AnalyticsOverviewResponseDto } from './dto/analytics-overview-response.dto';
 import { ShelterAnalyticsResponseDto } from './dto/shelter-analytics-response.dto';
+import { GeoAnalyticsResponseDto } from './dto/geo-analytics-response.dto';
 
 @ApiTags('admin-analytics')
 @ApiBearerAuth('JWT-auth')
@@ -37,6 +39,7 @@ export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly shelterAnalyticsService: ShelterAnalyticsService,
+    private readonly geoAnalyticsService: GeoAnalyticsService,
   ) {}
 
   /**
@@ -123,5 +126,41 @@ export class AnalyticsController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<ShelterAnalyticsResponseDto> {
     return this.shelterAnalyticsService.getShelterMetrics(id, user);
+  }
+
+  /**
+   * GET /admin/analytics/geo
+   *
+   * Geographic adoption patterns:
+   * - Supply vs demand by region (state/city)
+   * - Under-served regions
+   * - Adoption distance distribution
+   * - Minimum cell size (k-anonymity >= 5) where smaller regions are merged or omitted
+   * - No precise coordinates ever exposed (rounded to at most 1 decimal place)
+   */
+  @Get('geo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Geographic adoption patterns (admin/analyst)',
+    description:
+      'Aggregates by region for supply vs demand, under-served regions, and adoption distance distribution. ' +
+      'Regions with fewer than 5 records are merged or omitted (k-anonymity). Responses contain no precise coordinates.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Geographic adoption patterns successfully retrieved.',
+    type: GeoAnalyticsResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Requires ADMIN or ANALYST role',
+  })
+  async getGeoPatterns(
+    @Query('minCellSize') minCellSize?: number,
+    @Query('state') state?: string,
+  ): Promise<GeoAnalyticsResponseDto> {
+    const size = minCellSize ? Number(minCellSize) : undefined;
+    return this.geoAnalyticsService.getGeoPatterns(size, state);
   }
 }

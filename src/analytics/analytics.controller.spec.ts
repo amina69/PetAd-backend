@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import { ShelterAnalyticsService } from './shelter-analytics.service';
+import { GeoAnalyticsService } from './geo-analytics.service';
 import { AnalyticsGranularity } from './dto/analytics-overview-query.dto';
 import { AnalyticsOverviewResponseDto } from './dto/analytics-overview-response.dto';
 import { ROLES_KEY } from '../auth/guards/roles.decorator';
@@ -14,6 +15,7 @@ describe('AnalyticsController', () => {
   let controller: AnalyticsController;
   let analyticsService: { getOverview: jest.Mock };
   let shelterAnalyticsService: { getShelterMetrics: jest.Mock };
+  let geoAnalyticsService: { getGeoPatterns: jest.Mock };
   let reflector: Reflector;
 
   const mockOverviewResponse: AnalyticsOverviewResponseDto = {
@@ -73,12 +75,18 @@ describe('AnalyticsController', () => {
         .fn()
         .mockResolvedValue({ shelterId: 'shelter-1' }),
     };
+    geoAnalyticsService = {
+      getGeoPatterns: jest
+        .fn()
+        .mockResolvedValue({ totalRegions: 1, regions: [] }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AnalyticsController],
       providers: [
         { provide: AnalyticsService, useValue: analyticsService },
         { provide: ShelterAnalyticsService, useValue: shelterAnalyticsService },
+        { provide: GeoAnalyticsService, useValue: geoAnalyticsService },
         Reflector,
       ],
     }).compile();
@@ -139,6 +147,11 @@ describe('AnalyticsController', () => {
         'shelter-1',
         adminUser,
       );
+    });
+
+    it('should forward getGeoPatterns to geoAnalyticsService', async () => {
+      await controller.getGeoPatterns(5, 'CA');
+      expect(geoAnalyticsService.getGeoPatterns).toHaveBeenCalledWith(5, 'CA');
     });
   });
 });
