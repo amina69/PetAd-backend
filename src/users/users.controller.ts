@@ -156,7 +156,6 @@ export class UsersController {
   }
 
   @Public()
-  @Throttle({ name: 'public-verify', ttl: 60000, limit: 30 })
   @Get('me/data-export/:id/download')
   @ApiOperation({
     summary:

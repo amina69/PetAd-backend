@@ -45,6 +45,73 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
+// Initialize Sentry if SENTRY_DSN is configured, after app bootstrap.
+// Sentry is disabled when SENTRY_DSN is absent (no events are sent).
+const sentryDsn = configService.get<string>('sentryDsn');
+if (sentryDsn) {
+  // @ts-expect-error - Sentry Node init may have type differences
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: configService.get<string>('nodeEnv', 'development'),
+    release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
+
+    // beforeSend hook to remove PII and sensitive data
+    beforeSend: (event: any) => {
+      // Remove request bodies
+      if (event.request && event.request.body) {
+        event.request.body = '[redacted]';
+      }
+
+      // Remove cookies and authorization headers
+      if (event.request && event.request.headers) {
+        const headers: Record<string, string> = {};
+        for (const [key, value] of Object.entries(event.request.headers)) {
+          const lowerKey = key.toLowerCase();
+          if (
+            lowerKey === 'authorization' ||
+            lowerKey === 'cookie' ||
+            lowerKey === 'x-request-id' ||
+            lowerKey === 'x-email' ||
+            lowerKey === 'x-user-email'
+          ) {
+            continue;
+          }
+          headers[key] = value instanceof String ? value.toString() : String(value);
+        }
+        event.request.headers = headers;
+      }
+
+      // Remove user PII from breadcrumbs and extra context
+      // We can't access SentryService here, so do basic PII removal
+      if (event.request && event.request.query) {
+        event.request.query = {};
+      }
+      if (event.user && event.user.id) {
+        event.user = {
+          id: String(event.user.id),
+        };
+      }
+
+      return event;
+    },
+
+    // Ignore 4xx errors (client errors that are expected)
+    ignoreErrors: [
+      '400',
+      '401',
+      '403',
+      '404',
+      '409',
+      '415',
+      '422',
+      '429',
+    ],
+
+    // Set default integrations
+    defaultIntegrations: false,
+  });
+}
+
   // All configuration is read through ConfigService (typed via configuration.ts).
   const port = configService.get<number>('port', 3000);
   const nodeEnv = configService.get<string>('nodeEnv', 'development');

@@ -3,28 +3,11 @@ import * as Sentry from '@sentry/node';
 import { ConfigService } from '@nestjs/config';
 import { AppConfig } from '../config/env.schema';
 
-@Module({
-  providers: [SentryService],
-  exports: [SentryService],
-})
-@Global()
-export class SentryModule {
-  static forRoot(): ModuleDecorator {
-    return {
-      module: SentryModule,
-      providers: [SentryService],
-      exports: [SentryService],
-    };
-  }
-}
-
 class SentryService {
   private readonly configService: ConfigService;
-  private readonly appConfig: AppConfig;
 
   constructor() {
     this.configService = new ConfigService();
-    this.appConfig = this.configService.get('appConfig') || {};
   }
 
   /**
@@ -32,7 +15,7 @@ class SentryService {
    * Must be called after the application starts.
    */
   init(): void {
-    const dsn = this.appConfig.sentryDsn;
+    const dsn = this.configService.get<string>('sentryDsn');
 
     if (!dsn) {
       // Sentry is disabled - no events are sent
@@ -42,13 +25,11 @@ class SentryService {
     // Configure Sentry with DSN and environment info
     Sentry.init({
       dsn,
-      environment: this.appConfig.nodeEnv,
-      release: this.appConfig.nodeEnv === 'production'
-        ? `${process.env.npm_package_name}-${process.env.npm_package_version}`
-        : undefined,
+      environment: this.configService.get<string>('nodeEnv', 'development'),
+      release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
 
       // Set up tracing
-      tracesSampleRate: this.appConfig.nodeEnv === 'production' ? 0.1 : 1.0,
+      tracesSampleRate: 0.1,
 
       // beforeSend hook to remove PII and sensitive data
       beforeSend: (event: any) => {
@@ -71,7 +52,7 @@ class SentryService {
             ) {
               continue;
             }
-            headers[key] = value;
+            headers[key] = value instanceof String ? value.toString() : String(value);
           }
           event.request.headers = headers;
         }
@@ -103,21 +84,8 @@ class SentryService {
         '429',
       ],
 
-      // Set tags for release and environment
-      tags: {
-        environment: this.appConfig.nodeEnv,
-      },
-
       // Set default integrations
       defaultIntegrations: false,
-
-      // Release information
-      release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
-    });
-
-    // Set up breadcrumb filtering to avoid logging PII
-    Sentry.configureScope((scope: any) => {
-      scope.setTag('application', 'petad-backend');
     });
   }
 
@@ -125,8 +93,6 @@ class SentryService {
    * Remove PII from event data structures
    */
   private removePIIFromEvent(event: any): void {
-    // Remove from transactions, breadcrumbs, etc.
-
     // Sanitize extra context
     if (event.extra) {
       for (const key of Object.keys(event.extra)) {
@@ -185,3 +151,10 @@ class SentryService {
     return false;
   }
 }
+
+@Module({
+  providers: [SentryService],
+  exports: [SentryService],
+})
+@Global()
+export class SentryModule {}

@@ -7,7 +7,7 @@ import {
   Injectable,
   Inject,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/node';
 import { AppConfig } from '../../config/env.schema';
@@ -99,7 +99,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       tracesSampleRate: 0.1,
 
       // beforeSend hook to remove PII and sensitive data
-      beforeSend: (event) => {
+      beforeSend(event: any) {
         // Remove request bodies
         if (event.request && event.request.body) {
           event.request.body = '[redacted]';
@@ -119,7 +119,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
             ) {
               continue;
             }
-            headers[key] = value;
+            // Cast to string to satisfy TypeScript; headers values are typically strings
+            headers[key] = value instanceof String ? value.toString() : String(value);
           }
           event.request.headers = headers;
         }
@@ -140,6 +141,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       // Ignore 4xx errors (client errors that are expected)
       ignoreErrors: [
+        // These common 4xx errors are expected and should not be tracked
         '400',
         '401',
         '403',
@@ -150,16 +152,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         '429',
       ],
 
-      // Set tags for release and environment
-      tags: {
-        environment: this.configService.get<string>('nodeEnv', 'development'),
-      },
-
-      // Set default tags
+      // Set default integrations
       defaultIntegrations: false,
-
-      // Release information
-      release: `${process.env.npm_package_name}-${process.env.npm_package_version}`,
     });
 
     sentryInitialized = true;
@@ -230,12 +224,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const request = ctx.getRequest();
 
     const requestId: string =
       (request as any).requestId ??
       request.headers['x-request-id'] ??
-      Sentry.getCurrentHub().getScope()?.getTransaction()?.getId() ??
+      (Sentry as any).getCurrentHub()?.getScope()?.getTransaction()?.getId() ??
       crypto.randomUUID();
 
     const mapped = this.mapException(exception, this.isProduction);
@@ -294,7 +288,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   ): void {
     const userId = this.extractUserId(request);
 
-    Sentry.withScope((scope) => {
+    Sentry.withScope((scope: any) => {
       // Set the user context - only authenticated user's ID
       if (userId) {
         scope.setUser({ id: userId });

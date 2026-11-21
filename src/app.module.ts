@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { generateKey } from './rate-limiter/rate-limiter.key';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -32,35 +33,40 @@ import { configuration } from './config/configuration';
     // The ThrottlerStorageRedisService reads REDIS_URL from process.env
     // and uses ioredis to store rate limit state in Redis.
     ThrottlerModule.forRoot({
-      // Default throttler: 100 requests per 60s
+      // Default throttler: 100 requests per 60s - shared across instances via Redis
       throttlers: [
         {
           ttl: 60000,
           limit: 100,
+          generateKey,
         },
         // Auth throttler: 10 requests per 60s - stricter for login, forgot password, resend
         {
           ttl: 60000,
           limit: 10,
           name: 'auth',
+          generateKey,
         },
         // Write throttler: 20 requests per 60s - stricter for write operations
         {
           ttl: 60000,
           limit: 20,
           name: 'write',
+          generateKey,
         },
         // Expensive throttler: 5 requests per 60s - for resource-intensive endpoints
         {
           ttl: 60000,
           limit: 5,
           name: 'expensive',
+          generateKey,
         },
         // Public verify throttler: 30 requests per 60s - for verify-proof endpoints
         {
           ttl: 60000,
           limit: 30,
           name: 'public-verify',
+          generateKey,
         },
       ],
       // Redis-backed storage enables shared rate limits across
