@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { EventLedgerService } from './event-ledger.service';
+import { EventBusService } from './event-bus.service';
 import { EventLedgerController } from './event-ledger.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 
@@ -8,8 +9,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   controllers: [EventLedgerController],
-  providers: [EventsService, EventLedgerService],
-  exports: [EventsService, EventLedgerService],
+  providers: [EventsService, EventLedgerService, EventBusService],
+  exports: [EventsService, EventLedgerService, EventBusService],
 })
 export class EventsModule {}
 
