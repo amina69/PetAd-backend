@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
+import { ShelterAnalyticsService } from './shelter-analytics.service';
 import { AnalyticsGranularity } from './dto/analytics-overview-query.dto';
 import { AnalyticsOverviewResponseDto } from './dto/analytics-overview-response.dto';
 import { ROLES_KEY } from '../auth/guards/roles.decorator';
@@ -12,6 +13,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 describe('AnalyticsController', () => {
   let controller: AnalyticsController;
   let analyticsService: { getOverview: jest.Mock };
+  let shelterAnalyticsService: { getShelterMetrics: jest.Mock };
   let reflector: Reflector;
 
   const mockOverviewResponse: AnalyticsOverviewResponseDto = {
@@ -66,11 +68,17 @@ describe('AnalyticsController', () => {
     analyticsService = {
       getOverview: jest.fn().mockResolvedValue(mockOverviewResponse),
     };
+    shelterAnalyticsService = {
+      getShelterMetrics: jest
+        .fn()
+        .mockResolvedValue({ shelterId: 'shelter-1' }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AnalyticsController],
       providers: [
         { provide: AnalyticsService, useValue: analyticsService },
+        { provide: ShelterAnalyticsService, useValue: shelterAnalyticsService },
         Reflector,
       ],
     }).compile();
@@ -118,6 +126,19 @@ describe('AnalyticsController', () => {
     it('should pass default or empty query parameters to service', async () => {
       await controller.getOverview({});
       expect(analyticsService.getOverview).toHaveBeenCalledWith({});
+    });
+
+    it('should forward getShelterMetricsAdmin to shelterAnalyticsService', async () => {
+      const adminUser = {
+        userId: 'admin-1',
+        email: 'admin@pet.ad',
+        role: 'ADMIN',
+      };
+      await controller.getShelterMetricsAdmin('shelter-1', adminUser);
+      expect(shelterAnalyticsService.getShelterMetrics).toHaveBeenCalledWith(
+        'shelter-1',
+        adminUser,
+      );
     });
   });
 });

@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Param,
   Query,
   UseGuards,
   HttpCode,
@@ -9,6 +10,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -16,9 +18,15 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../auth/decorators/current-user.decorator';
 import { AnalyticsService } from './analytics.service';
+import { ShelterAnalyticsService } from './shelter-analytics.service';
 import { AnalyticsOverviewQueryDto } from './dto/analytics-overview-query.dto';
 import { AnalyticsOverviewResponseDto } from './dto/analytics-overview-response.dto';
+import { ShelterAnalyticsResponseDto } from './dto/shelter-analytics-response.dto';
 
 @ApiTags('admin-analytics')
 @ApiBearerAuth('JWT-auth')
@@ -26,7 +34,10 @@ import { AnalyticsOverviewResponseDto } from './dto/analytics-overview-response.
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN, Role.ANALYST)
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly shelterAnalyticsService: ShelterAnalyticsService,
+  ) {}
 
   /**
    * GET /admin/analytics/overview?from&to&granularity
@@ -75,5 +86,42 @@ export class AnalyticsController {
     @Query() query: AnalyticsOverviewQueryDto,
   ): Promise<AnalyticsOverviewResponseDto> {
     return this.analyticsService.getOverview(query);
+  }
+
+  /**
+   * GET /admin/analytics/shelters/:id
+   *
+   * Admin endpoint to inspect a specific shelter's performance metrics and platform median comparison.
+   */
+  @Get('shelters/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Get shelter performance metrics with platform comparison (admin/analyst)',
+    description:
+      'Returns a shelter performance metrics including listings, time-to-adoption, approval response time, ' +
+      'dispute rate, rating summary, and platform median comparison. Small samples are suppressed.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'The shelter user ID',
+    example: 'shelter-uuid',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Shelter analytics metrics successfully retrieved.',
+    type: ShelterAnalyticsResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - Requires ADMIN or ANALYST role',
+  })
+  @ApiResponse({ status: 404, description: 'Shelter not found' })
+  async getShelterMetricsAdmin(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<ShelterAnalyticsResponseDto> {
+    return this.shelterAnalyticsService.getShelterMetrics(id, user);
   }
 }
