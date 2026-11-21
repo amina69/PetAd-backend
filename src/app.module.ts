@@ -20,6 +20,7 @@ import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { PaymentsModule } from './payments/payments.module';
 import { configuration } from './config/configuration';
 
 @Module({
@@ -55,6 +56,7 @@ import { configuration } from './config/configuration';
     JobsModule,
     AdminModule,
     EventLedgerModule,
+    PaymentsModule,
   ],
 
   controllers: [AppController],
