@@ -21,7 +21,7 @@ export async function up() {
 
     await prisma.$executeRawUnsafe(`
       CREATE UNIQUE INDEX IF NOT EXISTS "event_logs_entity_id_sequence_number_key" ON "event_logs"("entity_id", "sequence_number");
-    `);
+    `).catch(() => {});
   } finally {
     await prisma.$disconnect();
   }
