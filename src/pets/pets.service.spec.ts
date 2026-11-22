@@ -308,7 +308,12 @@ describe('PetsService', () => {
         5,
       );
       expect(result.data[0].id).toBe('pet-near');
-      expect(result.data[0].distanceKm).toBe(1.23);
+      // `findAll` is a union of the plain and nearby result shapes, so the
+      // geo-only field needs narrowing before it can be read.
+      const nearby = result.data[0] as (typeof result.data)[number] & {
+        distanceKm?: number;
+      };
+      expect(nearby.distanceKm).toBe(1.23);
       expect(result.data[0].isAvailable).toBe(true);
       expect(result.meta.total).toBe(1);
     });

@@ -195,6 +195,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { BADGE_DEFINITIONS } from '../src/trust/badges/badge-definitions';
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL as string,
@@ -407,6 +408,24 @@ async function main() {
   });
 
   console.log('✓ Event logs created');
+
+  // ─────────────────────────────────────────
+  // BADGE DEFINITIONS
+  // ─────────────────────────────────────────
+
+  for (const badge of BADGE_DEFINITIONS) {
+    await prisma.badgeDefinition.upsert({
+      where: { code: badge.code },
+      create: badge,
+      update: {
+        name: badge.name,
+        description: badge.description,
+        criteria: badge.criteria,
+      },
+    });
+  }
+
+  console.log('✓ Badge definitions created');
 
   console.log('✅ Seeding complete!');
 }

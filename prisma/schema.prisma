@@ -82,6 +82,9 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  PAYMENT
+  REVIEW
+  BADGE
 }
 
 enum EventType {
@@ -112,6 +115,64 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  PAYMENT_REFUNDED
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_DENIED
+  REVIEW_REPORTED
+  REVIEW_HIDDEN
+  REVIEW_RESTORED
+  REVIEW_DELETED
+  RATING_SUMMARY_UPDATED
+  BADGE_AWARDED
+  BADGE_REVOKED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentLineKind {
+  ESCROW_FUNDED
+  SERVICE_FEE
+  DEPOSIT
+  PAYOUT
+  ADJUSTMENT
+}
+
+enum RefundRequestStatus {
+  PENDING
+  APPROVED
+  PARTIALLY_APPROVED
+  DENIED
+}
+
+enum ReviewStatus {
+  VISIBLE
+  HIDDEN
+  DELETED
+}
+
+enum ReviewReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum BadgeCode {
+  ID_VERIFIED
+  TRUSTED_ADOPTER
+  VERIFIED_SHELTER
+  CLEAN_RECORD_12M
+}
+
+enum UserBadgeStatus {
+  AWARDED
+  REVOKED
 }
 
 enum LogLevel {
@@ -155,6 +216,11 @@ model User {
 
   trustScore Float   @default(50)
 
+  // Persisted aggregate of visible reviews. Recomputed by the review
+  // moderation flow so hidden reviews never count towards the public rating.
+  ratingAverage Float? @map("rating_average")
+  ratingCount   Int    @default(0) @map("rating_count")
+
   // Profile fields editable through PATCH /users/:id
   phone    String?
   bio      String?
@@ -184,6 +250,19 @@ model User {
   sessions    Session[]
 
   dataExports DataExport[]
+
+  paymentsMade     Payment[]       @relation("PaymentPayer")
+  paymentsReceived Payment[]       @relation("PaymentPayee")
+  refundRequests   RefundRequest[] @relation("RefundRequester")
+  refundDecisions  RefundRequest[] @relation("RefundDecider")
+
+  reviewsWritten   Review[] @relation("ReviewAuthor")
+  reviewsReceived  Review[] @relation("ReviewSubject")
+  moderatedReviews Review[] @relation("ReviewModerator")
+  reviewReports    ReviewReport[] @relation("ReviewReporter")
+  resolvedReports  ReviewReport[] @relation("ReviewReportResolver")
+
+  badges UserBadge[]
 
   @@index([status])
   @@map("users")
@@ -312,12 +391,183 @@ model Escrow {
 
   adoption Adoption?
   custody  Custody?
+  payment  Payment?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("escrows")
+}
+
+model Payment {
+  id String @id @default(uuid())
+
+  payerId String @map("payer_id")
+  payer   User   @relation("PaymentPayer", fields: [payerId], references: [id])
+
+  payeeId String? @map("payee_id")
+  payee   User?   @relation("PaymentPayee", fields: [payeeId], references: [id])
+
+  // Money is always stored and returned as an integer amount in minor units
+  // together with its currency, matching the frontend `Money` type.
+  amountMinor         Int    @map("amount_minor")
+  refundedAmountMinor Int    @default(0) @map("refunded_amount_minor")
+  currency            String @default("XLM")
+
+  status PaymentStatus @default(PENDING)
+
+  // Settlement escrow backing the payment when it funds an adoption or
+  // custody agreement. Also resolves the related entity link.
+  escrowId String? @unique @map("escrow_id")
+  escrow   Escrow? @relation(fields: [escrowId], references: [id])
+
+  paidAt DateTime? @map("paid_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lines          PaymentLine[]
+  refundRequests RefundRequest[]
+
+  @@index([payerId, createdAt])
+  @@index([payeeId])
+  @@index([status])
+  @@map("payments")
+}
+
+model PaymentLine {
+  id          String          @id @default(uuid())
+  paymentId   String          @map("payment_id")
+  payment     Payment         @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  kind        PaymentLineKind
+  label       String
+  amountMinor Int             @map("amount_minor")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  @@index([paymentId])
+  @@map("payment_lines")
+}
+
+model RefundRequest {
+  id        String  @id @default(uuid())
+  paymentId String  @map("payment_id")
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  requesterId String @map("requester_id")
+  requester   User   @relation("RefundRequester", fields: [requesterId], references: [id])
+
+  reason               String
+  requestedAmountMinor Int?                  @map("requested_amount_minor")
+  approvedAmountMinor  Int?                  @map("approved_amount_minor")
+  status               RefundRequestStatus   @default(PENDING)
+
+  decidedById    String?   @map("decided_by_id")
+  decidedBy      User?     @relation("RefundDecider", fields: [decidedById], references: [id])
+  decisionReason String?   @map("decision_reason")
+  decidedAt      DateTime? @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([paymentId])
+  @@index([status, createdAt])
+  @@map("refund_requests")
+}
+
+model Review {
+  id String @id @default(uuid())
+
+  authorId String @map("author_id")
+  author   User   @relation("ReviewAuthor", fields: [authorId], references: [id])
+
+  subjectId String @map("subject_id")
+  subject   User   @relation("ReviewSubject", fields: [subjectId], references: [id])
+
+  // Agreement the review refers to (ADOPTION or CUSTODY).
+  agreementType String? @map("agreement_type")
+  agreementId   String? @map("agreement_id")
+
+  rating  Int
+  comment String?
+
+  status ReviewStatus @default(VISIBLE)
+
+  moderationReason String?   @map("moderation_reason")
+  moderatedById    String?   @map("moderated_by_id")
+  moderatedBy      User?     @relation("ReviewModerator", fields: [moderatedById], references: [id])
+  moderatedAt      DateTime? @map("moderated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reports ReviewReport[]
+
+  @@index([subjectId, status])
+  @@index([authorId])
+  @@index([status, createdAt])
+  @@map("reviews")
+}
+
+model ReviewReport {
+  id       String @id @default(uuid())
+  reviewId String @map("review_id")
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  reporterId String @map("reporter_id")
+  reporter   User   @relation("ReviewReporter", fields: [reporterId], references: [id])
+
+  reason String
+  status ReviewReportStatus @default(OPEN)
+
+  resolvedById   String?   @map("resolved_by_id")
+  resolvedBy     User?     @relation("ReviewReportResolver", fields: [resolvedById], references: [id])
+  resolutionNote String?   @map("resolution_note")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([reviewId, reporterId])
+  @@index([status, createdAt])
+  @@map("review_reports")
+}
+
+model BadgeDefinition {
+  id          String    @id @default(uuid())
+  code        BadgeCode @unique
+  name        String
+  description String
+  criteria    Json?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  userBadges UserBadge[]
+
+  @@map("badge_definitions")
+}
+
+model UserBadge {
+  id           String          @id @default(uuid())
+  userId       String          @map("user_id")
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  definitionId String          @map("definition_id")
+  definition   BadgeDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  status UserBadgeStatus @default(AWARDED)
+
+  // Event ledger ids proving the award. Kept as a plain string array so a
+  // badge stays auditable even as the ledger grows independently.
+  supportingEventIds String[] @map("supporting_event_ids")
+  reason             String?
+
+  awardedAt DateTime  @default(now()) @map("awarded_at")
+  revokedAt DateTime? @map("revoked_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@unique([userId, definitionId])
+  @@index([userId, status])
+  @@map("user_badges")
 }
 
 model AppLog {
