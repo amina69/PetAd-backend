@@ -21,7 +21,7 @@ import {
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
 import { CustodyService } from './custody.service';
-import type { CreateCustodyDto } from './dto/create-custody.dto';
+import { CreateCustodyDto } from './dto/create-custody.dto';
 import { CustodyResponseDto } from './dto/custody-response.dto';
 
 @ApiTags('custody')

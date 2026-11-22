@@ -373,6 +373,31 @@ model Document {
   @@map("documents")
 }
 
+// Current settings are deliberately not seeded: missing policy fails closed.
+model SystemSetting {
+  key       String   @id
+  value     Json
+  version   Int
+  actorId   String   @map("actor_id")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+// Rows in this table are append-only (enforced by a database trigger).
+model SystemSettingVersion {
+  key       String
+  version   Int
+  value     Json
+  actorId   String   @map("actor_id")
+  reason            String
+  rollbackOfVersion Int?     @map("rollback_of_version")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@id([key, version])
+  @@map("system_setting_versions")
+}
+
 model DataExport {
   id           String           @id @default(uuid())
   userId       String           @map("user_id")
