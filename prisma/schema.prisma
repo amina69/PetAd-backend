@@ -337,6 +337,7 @@ model EventLog {
   entityType  EventEntityType  @map("entity_type")
   entityId    String           @map("entity_id")
   eventType   EventType        @map("event_type")
+  schemaVersion Int            @default(1) @map("schema_version")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
@@ -353,6 +354,20 @@ model EventLog {
   @@index([eventType])
   @@index([createdAt])
   @@map("event_logs")
+}
+
+model AggregateSnapshot {
+  id            String          @id @default(uuid())
+  aggregateId   String          @map("aggregate_id")
+  seq           Int
+  state         Json
+  stateHash     String          @map("state_hash")
+  reducerVersion String         @map("reducer_version")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@unique([aggregateId, seq])
+  @@index([aggregateId])
+  @@map("aggregate_snapshots")
 }
 
 model Document {

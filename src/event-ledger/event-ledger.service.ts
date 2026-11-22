@@ -1,14 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EventEntityType, Prisma } from '@prisma/client';
+import { EventEntityType, EventType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
+import { SchemaRegistry } from './schema-registry/schema-registry';
 
 export interface AppendEventParams {
   aggregateType: EventEntityType | string;
   aggregateId: string;
-  eventType: string;
+  eventType: EventType | string;
   payload: Record<string, unknown>;
   actorId?: string;
+  schemaVersion?: number;
 }
 
 /**
@@ -56,8 +58,15 @@ export class EventLedgerService {
       });
 
       const sequenceNumber = (latestEvent?.sequenceNumber ?? 0) + 1;
+      const schemaVersion = params.schemaVersion ?? 1;
 
-      // Create the event with the allocated sequence number
+      SchemaRegistry.validatePayload(
+        params.eventType as EventType,
+        schemaVersion,
+        params.payload,
+      );
+
+      // Create the event with the allocated sequence number and schemaVersion
       const event = await eventLog.create({
         data: {
           entityType: params.aggregateType,
@@ -66,6 +75,7 @@ export class EventLedgerService {
           actorId: params.actorId,
           payload: params.payload as Prisma.InputJsonValue,
           sequenceNumber,
+          schemaVersion,
         },
       });
 
