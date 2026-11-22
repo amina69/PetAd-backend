@@ -86,6 +86,12 @@ export class UsersService {
         status: true,
         deletedAt: true,
         createdAt: true,
+        ratingAverage: true,
+        ratingCount: true,
+        badges: {
+          where: { status: 'AWARDED' },
+          select: { definition: { select: { code: true } } },
+        },
       },
     });
 
@@ -105,7 +111,19 @@ export class UsersService {
       [first, lastInitial].filter(Boolean).join(' ') || 'Anonymous';
 
     const verifiedBadges: string[] = [];
-    if (user.role === 'SHELTER') {
+    // Badges awarded by the trust projection (issue #147) come first so the
+    // profile exposes every persisted award, then the cheap heuristics below
+    // keep derived markers such as STELLAR_VERIFIED available.
+    for (const badge of user.badges ?? []) {
+      const code = badge.definition?.code;
+      if (code && !verifiedBadges.includes(code)) {
+        verifiedBadges.push(code);
+      }
+    }
+    if (
+      user.role === 'SHELTER' &&
+      !verifiedBadges.includes('VERIFIED_SHELTER')
+    ) {
       verifiedBadges.push('VERIFIED_SHELTER');
     }
     if (user.stellarPublicKey) {
@@ -131,10 +149,20 @@ export class UsersService {
     ]);
     const completedAgreements = completedAdoptions + completedCustodies;
 
-    const ratingSummary = {
-      average: user.trustScore ? Number((user.trustScore / 20).toFixed(1)) : 0,
-      count: completedAgreements,
-    };
+    // Once reviews exist their visible-only aggregate is authoritative;
+    // otherwise fall back to the trust-score heuristic.
+    const ratingSummary =
+      user.ratingCount > 0
+        ? {
+            average: Number((user.ratingAverage ?? 0).toFixed(1)),
+            count: user.ratingCount,
+          }
+        : {
+            average: user.trustScore
+              ? Number((user.trustScore / 20).toFixed(1))
+              : 0,
+            count: completedAgreements,
+          };
 
     return {
       id: user.id,
