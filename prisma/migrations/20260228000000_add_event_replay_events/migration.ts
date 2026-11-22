@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
-export async function up() {
-  const prisma = new PrismaClient();
+export async function up(prismaClient?: any) {
+  const prisma = prismaClient || new PrismaClient();
   try {
     // Check if event_logs table exists and has sequence_number column before running raw queries
     const tableCheck: any[] = await prisma.$queryRawUnsafe(`
