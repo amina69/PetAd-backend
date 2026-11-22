@@ -113,6 +113,7 @@ describe('EventLedgerService', () => {
         actorId: 'user-1',
         payload: { petId: 'pet-1', adopterId: 'user-1' },
         sequenceNumber: 1,
+        schemaVersion: 1,
       },
     });
   });

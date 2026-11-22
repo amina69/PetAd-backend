@@ -111,6 +111,18 @@ describe('Resource policies (role × resource × action)', () => {
   describe('DocumentPolicy', () => {
     const policy = new DocumentPolicy();
 
+    const custodyParty: PolicyActor = { userId: 'holder-1', role: Role.USER };
+    const disputeParticipant: PolicyActor = { userId: 'dispute-user-1', role: Role.USER };
+
+    const complexDocument: DocumentPolicyResource = {
+      id: 'doc-complex',
+      uploadedById: UPLOADER.userId,
+      kind: 'ID',
+      adoption: { adopterId: ADOPTER.userId, ownerId: OWNER.userId },
+      custody: { holderId: 'holder-1', pet: { currentOwnerId: OWNER.userId } },
+      dispute: { participants: [{ userId: 'dispute-user-1' }] },
+    };
+
     const cases: Array<[string, PolicyActor, PolicyAction, boolean]> = [
       ['admin READ', ADMIN, PolicyAction.READ, true],
       ['admin UPDATE', ADMIN, PolicyAction.UPDATE, true],
@@ -122,13 +134,15 @@ describe('Resource policies (role × resource × action)', () => {
       ['adopter DELETE', ADOPTER, PolicyAction.DELETE, false],
       ['owner READ', OWNER, PolicyAction.READ, true],
       ['owner DELETE', OWNER, PolicyAction.DELETE, false],
+      ['custody holder READ', custodyParty, PolicyAction.READ, true],
+      ['dispute participant READ', disputeParticipant, PolicyAction.READ, true],
       ['stranger READ', STRANGER, PolicyAction.READ, false],
       ['stranger DELETE', STRANGER, PolicyAction.DELETE, false],
       ['shelter non-party READ', STRANGER_SHELTER, PolicyAction.READ, false],
     ];
 
     it.each(cases)('%s', (_label, actor, action, expected) => {
-      expect(policy.allows(actor, document, action)).toBe(expected);
+      expect(policy.allows(actor, complexDocument, action)).toBe(expected);
     });
   });
 });
