@@ -116,6 +116,8 @@ export class DocumentsService {
     };
     if (data.adoptionId) {
       createData.adoption = { connect: { id: data.adoptionId } };
+    } else {
+      createData.adoption = undefined;
     }
 
     const document = await this.prisma.document.create({
