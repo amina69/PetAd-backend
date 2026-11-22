@@ -20,11 +20,16 @@ export class DocumentPolicy implements ResourcePolicy<DocumentPolicyResource> {
     }
 
     const isUploader = document.uploadedById === actor.userId;
-    const isParty =
+    const isAdoptionParty =
       document.adoption?.adopterId === actor.userId ||
       document.adoption?.ownerId === actor.userId;
+    const isCustodyParty =
+      document.custody?.holderId === actor.userId ||
+      document.custody?.pet?.currentOwnerId === actor.userId;
+    const isDisputeParticipant =
+      document.dispute?.participants?.some((p) => p.userId === actor.userId);
 
-    if (!isUploader && !isParty) {
+    if (!isUploader && !isAdoptionParty && !isCustodyParty && !isDisputeParticipant) {
       return false;
     }
 
