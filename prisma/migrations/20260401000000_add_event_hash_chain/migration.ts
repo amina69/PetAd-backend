@@ -29,9 +29,9 @@ export async function up() {
     `);
 
     const events: any[] = await prisma.$queryRawUnsafe(`
-      SELECT id, "entityId", COALESCE("sequenceNumber", 1) as "sequenceNumber", type, event_type, payload, actor_id, schema_version, occurred_at, "createdAt"
-      FROM "EventLedger"
-      ORDER BY "entityId" ASC, "sequenceNumber" ASC;
+      SELECT id, "entity_id", COALESCE("sequence_number", 1) as "sequenceNumber", type, event_type, payload, actor_id, schema_version, occurred_at, "createdAt"
+      FROM "event_logs"
+      ORDER BY "entity_id" ASC, "sequence_number" ASC;
     `);
 
     const latestHashes: Record<string, string | null> = {};
