@@ -113,10 +113,8 @@ export class DocumentsService {
       scanStatus: 'PENDING',
       fileUrl: data.fileUrl || 'uploads/' + data.fileName,
       publicId: data.publicId || 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+      ...(data.adoptionId && { adoption: { connect: { id: data.adoptionId } } }),
     };
-    if (data.adoptionId) {
-      createData.adoption = { connect: { id: data.adoptionId } };
-    }
 
     const document = await this.prisma.document.create({
       data: createData,
