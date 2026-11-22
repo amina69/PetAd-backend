@@ -120,7 +120,7 @@ describe('Documents E2E (upload -> scan -> verify -> download)', () => {
       });
 
     expect([201, 200, 204]).toContain(uploadRes.status);
-    const documentId = uploadRes.body.id;
+    const documentId = uploadRes.body.id || uploadRes.body.documentId;
     expect(documentId).toBeDefined();
 
     // 2. Simulate scanning gate / verification by admin
