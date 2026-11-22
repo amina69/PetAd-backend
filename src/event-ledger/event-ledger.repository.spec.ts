@@ -141,6 +141,7 @@ describe('EventLedgerRepository', () => {
           eventType: true,
           actorId: true,
           payload: true,
+          schemaVersion: true,
           sequenceNumber: true,
           createdAt: true,
         },
