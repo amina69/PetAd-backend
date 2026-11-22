@@ -21,6 +21,10 @@ import { Role } from '../auth/enums/role.enum';
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
+  async uploadDocuments(adoptionId: string, user: any, files: Express.Multer.File[]) {
+    return this.documentsService.uploadDocuments(adoptionId, user.id, user.role, files);
+  }
+
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.USER, Role.SHELTER)

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole } from '@prisma/client';
 import { EventsService } from '../events/events.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class DocumentsService {
@@ -54,6 +55,53 @@ export class DocumentsService {
     }
 
     return document;
+  }
+
+  calculateHash(buffer: Buffer): string {
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+  }
+
+  async generateSignedDownloadUrl(documentId: string, expiresInSeconds: number = 3600): Promise<string> {
+    const doc = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!doc) {
+      throw new NotFoundException('Document not found');
+    }
+    const docAny = doc as any;
+    if (docAny.scanStatus && docAny.scanStatus !== 'CLEAN') {
+      throw new BadRequestException('Document scan status is not clean');
+    }
+    const expires = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    const secret = process.env.JWT_SECRET || 'test-secret';
+    const signature = crypto.createHmac('sha256', secret).update(`${documentId}:${expires}`).digest('hex');
+    return `${doc.fileUrl || 'https://example.com/doc'}?expires=${expires}&signature=${signature}`;
+  }
+
+  verifySignedUrl(documentId: string, expires: number, signature: string): boolean {
+    if (Math.floor(Date.now() / 1000) > expires) {
+      return false;
+    }
+    const secret = process.env.JWT_SECRET || 'test-secret';
+    const expectedSignature = crypto.createHmac('sha256', secret).update(`${documentId}:${expires}`).digest('hex');
+    return signature === expectedSignature;
+  }
+
+  async checkAccess(userId: string, userRole: string, documentId: string): Promise<boolean> {
+    if (userRole === 'ADMIN') return true;
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        adoption: {
+          select: { id: true, adopterId: true, ownerId: true },
+        },
+      },
+    });
+    if (!document) return false;
+    const docAny = document as any;
+    if (docAny.userId === userId) return true;
+    if (document.adoption && (document.adoption.adopterId === userId || document.adoption.ownerId === userId)) {
+      return true;
+    }
+    return false;
   }
 
   async uploadDocuments(

@@ -189,6 +189,8 @@ export class SchemaRegistry {
       if (!def.validate(payload)) {
         throw new Error(`Event payload validation failed for ${eventType} v${version}`);
       }
+    } else {
+      throw new Error(`Event payload validation failed for ${eventType} v${version}`);
     }
   }
 
