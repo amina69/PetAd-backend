@@ -14,10 +14,14 @@ export async function up() {
       SELECT column_name FROM information_schema.columns WHERE table_name = 'event_logs' AND column_name = 'sequence_number';
     `);
     if (!colCheck || colCheck.length === 0) {
-      return;
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "event_logs" ADD COLUMN IF NOT EXISTS "sequence_number" INTEGER DEFAULT 1;
+      `);
     }
 
-
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "event_logs_entity_id_sequence_number_key" ON "event_logs"("entity_id", "sequence_number");
+    `);
   } finally {
     await prisma.$disconnect();
   }
