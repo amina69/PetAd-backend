@@ -293,7 +293,7 @@ describe('EventLedgerService', () => {
         aggregateType: EventEntityType.ADOPTION,
         aggregateId: 'adoption-1',
         eventType: 'ADOPTION_REQUESTED',
-        payload: {},
+        payload: { petId: 'pet-1', adopterId: 'usr-1' },
       }),
     ]);
 
