@@ -98,7 +98,7 @@ describe('Auth Security E2E', () => {
         where: { email: 'deleted@example.com' },
       });
       if (!user) {
-        fail('User not found');
+        throw new Error('User not found');
       }
       await prisma.user.delete({ where: { id: user.id } });
 

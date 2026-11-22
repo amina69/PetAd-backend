@@ -18,6 +18,7 @@ services:
     depends_on:
       - db
       - redis
+      - clamav
     restart: unless-stopped
 
   db:
@@ -38,6 +39,13 @@ services:
     container_name: petad-redis
     ports:
       - "6379:6379"
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: petad-clamav
+    ports:
+      - "3310:3310"
     restart: unless-stopped
 
 volumes:
