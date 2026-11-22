@@ -29,7 +29,7 @@ export async function up() {
     `);
 
     const events: any[] = await prisma.$queryRawUnsafe(`
-      SELECT id, "entityId", "sequenceNumber", type, event_type, payload, actor_id, schema_version, occurred_at, "createdAt"
+      SELECT id, "entityId", COALESCE("sequenceNumber", 1) as "sequenceNumber", type, event_type, payload, actor_id, schema_version, occurred_at, "createdAt"
       FROM "EventLedger"
       ORDER BY "entityId" ASC, "sequenceNumber" ASC;
     `);
