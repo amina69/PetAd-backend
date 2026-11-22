@@ -1,10 +1,82 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CustodyController } from './custody.controller';
 import { CustodyService } from './custody.service';
 import type { CreateCustodyDto } from './dto/create-custody.dto';
 import type { CustodyResponseDto } from './dto/custody-response.dto';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+
+describe('CustodyController request validation', () => {
+  let app: INestApplication;
+  const createCustody = jest.fn();
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [CustodyController],
+      providers: [
+        { provide: CustodyService, useValue: { createCustody } },
+        { provide: PrismaService, useValue: {} },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (context) => {
+          context.switchToHttp().getRequest().user = { userId: 'user-123' };
+          return true;
+        },
+      })
+      .compile();
+
+    app = module.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => createCustody.mockReset());
+
+  it.each([
+    { cardNumber: '4242424242424242' },
+    { card: { number: '4242424242424242', cvc: '123' } },
+    { cvv: '123' },
+  ])('rejects raw card data before invoking the service: %j', async (card) => {
+    await request(app.getHttpServer())
+      .post('/custody')
+      .send({
+        petId: '550e8400-e29b-41d4-a716-446655440000',
+        startDate: '2030-01-01T00:00:00.000Z',
+        durationDays: 7,
+        ...card,
+      })
+      .expect(400);
+    expect(createCustody).not.toHaveBeenCalled();
+  });
+
+  it('accepts a valid request without card data', async () => {
+    createCustody.mockResolvedValue({ id: 'custody-123' });
+    await request(app.getHttpServer())
+      .post('/custody')
+      .send({
+        petId: '550e8400-e29b-41d4-a716-446655440000',
+        startDate: '2030-01-01T00:00:00.000Z',
+        durationDays: 7,
+      })
+      .expect(201);
+    expect(createCustody).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('CustodyController', () => {
   let controller: CustodyController;
