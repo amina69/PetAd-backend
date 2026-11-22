@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # ─── npm and yarn ─────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "your-team-reviewers"
+    labels:
+      - "dependencies"
+    confidence-level: "low"
+    # Group related dependency updates where appropriate
+    # Comment out the following if you don't want grouping
+    # allow:
+    #   - dependency-type: "direct"
+    #     update-type: "version"
+    #   - dependency-type: "indirect"
+    #     update-type: "version"
+
+  # ─── Docker base image ──────────────────────────────────────────
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Only update base image digest changes
+    open-pull-requests-limit: 5

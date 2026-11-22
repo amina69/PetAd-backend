@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -15,32 +16,33 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { SentryModule } from './common/sentry/sentry.module';
 
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
-import { configuration } from './config/configuration';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
+    ConfigModule.forRoot({ isGlobal: true }),
 
-    // To be used only when limits needs to be persisted upon restart
+    // Redis-backed throttling so rate limits are shared across application instances
+    ThrottlerModule.forRoot({
+      throttlers: [
+        { name: 'default', ttl: 60000, limit: 100 },
+        { name: 'auth', ttl: 60000, limit: 10 },
+        { name: 'write', ttl: 60000, limit: 5 },
+        { name: 'expensive', ttl: 60000, limit: 2 },
+        { name: 'public-verify', ttl: 60000, limit: 20 },
+      ],
+      storage: new ThrottlerStorageRedisService({
+        host: 'localhost',
+        port: 6379,
+      }),
+    }),
 
-    // ThrottlerModule.forRoot({
-    //   throttlers: [{ ttl: 60000, limit: 100 }],
-    //   storage: new ThrottlerStorageRedisService({
-    //     host: 'redis',  // Docker service name
-    //     port: 6379,
-    //   }),
-    // }),
+    SentryModule.forFeature(),
 
     PrismaModule,
     PetsModule,
@@ -71,4 +73,6 @@ import { configuration } from './config/configuration';
     },
   ],
 })
-export class AppModule {}
+export class AppModule {
+  constructor(private readonly configService: ConfigService) {}
+}

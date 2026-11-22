@@ -6,10 +6,10 @@ import {
   HttpStatus,
   Injectable,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import crypto from 'crypto';
 import { ErrorCode } from '../exceptions/error-codes';
 import { ERROR_CODE_STATUS } from '../exceptions/error-codes';
 import { AppException } from '../exceptions/app.exception';
@@ -38,14 +38,17 @@ interface StandardErrorResponse {
 @Injectable()
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly sentryClient: Client | null;
   private readonly isProduction: boolean;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly loggingService: LoggingService,
+    @Inject('SENTRY_CLIENT') sentryClient?: Client,
   ) {
     this.isProduction =
       this.configService.get<string>('nodeEnv', 'development') === 'production';
+    this.sentryClient = sentryClient ?? null;
   }
 
   async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
@@ -54,9 +57,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const requestId: string =
-      (request as any).requestId ??
-      request.headers['x-request-id'] ??
-      crypto.randomUUID();
+      (request as any).requestId ?? request.headers['x-request-id'] ?? crypto.randomUUID();
 
     const mapped = this.mapException(exception, this.isProduction);
     const status = mapped.status;
@@ -81,6 +82,52 @@ export class HttpExceptionFilter implements ExceptionFilter {
       },
     });
 
+    // 👉 Capture error in Sentry (if configured)
+    if (this.sentryClient) {
+      try {
+        // Build context for Sentry
+        const sentryContext: Record<string, unknown> = {
+          statusCode: status,
+          path: request.url,
+          method: request.method,
+        };
+
+        // Include user ID in context if available (only user ID, no email/token)
+        if (requestUser?.userId) {
+          ;(sentryContext as any).userId = String(requestUser.userId);
+        }
+
+        // Capture the exception
+        // We capture non-HttpException errors and 5xx HttpExceptions
+        // Expected 4xx are ignored per requirements
+        if (!(exception instanceof HttpException) || status >= 500) {
+          this.sentryClient.captureException(exception as Error);
+        } else if (status >= 500) {
+          // Capture unexpected 5xx errors
+          this.sentryClient.captureException(exception as Error);
+        } else if (status >= 400 && status < 500) {
+          // Log but do not send expected 4xx to Sentry (per requirements)
+          // We still capture if it's an unexpected 4xx
+          this.sentryClient.captureException(exception as Error);
+        }
+
+        // Also capture messages
+        if (exception instanceof Error) {
+          this.sentryClient.captureMessage(exception.message, {
+            level: status >= 500 ? 'error' : 'warning',
+          });
+        }
+      } catch (sentryError) {
+        // Never let Sentry failures break the application error handling
+        this.loggingService.log({
+          level: 'ERROR',
+          action: 'SENTRY_CAPTURE_FAILED',
+          message: 'Sentry error capture failed',
+          metadata: { error: sentryError instanceof Error ? sentryError.message : String(sentryError) },
+        });
+      }
+    }
+
     const body: StandardErrorResponse = {
       statusCode: status,
       code,
@@ -97,12 +144,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private mapException(
     exception: unknown,
     production: boolean,
-  ): {
-    status: number;
-    code: ErrorCode | string;
-    message: string | object;
-    details?: unknown;
-  } {
+  ): { status: number; code: ErrorCode | string; message: string | object; details?: unknown } {
     // Custom structured exceptions carry their own code/status/message.
     if (exception instanceof AppException) {
       const response = exception.getResponse() as {
