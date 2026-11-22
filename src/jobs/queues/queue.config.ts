@@ -33,3 +33,6 @@ export function getJobBackoffDelay(configService: ConfigService): number {
   const parsed = raw ? Number.parseInt(raw, 10) : 5000;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5000;
 }
+
+export const DEAD_LETTER_QUEUE_NAME = 'dead-letters';
+export const DEAD_LETTER_ATTEMPTS_LIMIT = 3;

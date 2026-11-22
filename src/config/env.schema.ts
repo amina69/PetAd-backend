@@ -169,4 +169,8 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
+
+  // Field-level PII encryption key (32+ chars; derived via SHA-256 for AES-256-GCM)
+  // @ts-ignore - TypeScript type gap with Joi schema integration; key is validated at runtime.
+  PIPI_ENCRYPTION_KEY: Joi.string().min(32).optional(),
 }).options({ abortEarly: false, allowUnknown: true });

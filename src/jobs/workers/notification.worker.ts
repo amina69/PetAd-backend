@@ -2,11 +2,11 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
-import { getRedisConnection } from '../queues/queue.config';
 import {
   NOTIFICATION_QUEUE_NAME,
   SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
   getQueueConcurrency,
+  getRedisConnection,
 } from '../queues/queue.config';
 import { NotificationProcessor } from '../processors/notification.processor';
 
@@ -25,7 +25,8 @@ export class NotificationWorker
     const connection = getRedisConnection(this.configService);
     const concurrency = getQueueConcurrency(this.configService);
 
-    // The processor is responsible for throwing descriptive errors.
+    // The processor is responsible for throwing descriptive errors and handling
+    // retries/dead-letter. See notification.processor.ts for logic.
     this.worker = new Worker(
       NOTIFICATION_QUEUE_NAME,
       async (job: Job<any>) => {

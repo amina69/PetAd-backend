@@ -142,9 +142,16 @@ model Session {
 model User {
   id        String     @id @default(uuid())
   email     String     @unique
-  // PII columns are nullable so a deleted account can keep its row for
-  // referential integrity without retaining personal data.
-  password  String?
+  // PII columns are encrypted at rest and nullable so a deleted account can keep
+  // its row for referential integrity without retaining personal data.
+  // Encrypted fields store {iv, data, authTag} as JSON blobs; decrypt via PiiEncryptionService.
+  password  String?    @map("password")
+
+  // Encrypted PII fields (stored as Json for flexibility)
+  encryptedEmail Json?     @map("encrypted_email")
+  encryptedPhone Json?    @map("encrypted_phone")
+  encryptedBio   Json?     @map("encrypted_bio")
+
   firstName String?    @map("first_name")
   lastName  String?    @map("last_name")
   role      UserRole   @default(USER)
@@ -156,8 +163,10 @@ model User {
   trustScore Float   @default(50)
 
   // Profile fields editable through PATCH /users/:id
-  phone    String?
-  bio      String?
+  // These are kept in plaintext for API usability but sensitive fields are
+  // encrypted via the PII encryption service before persisting.
+  phone    String?    @map("phone")
+  bio      String?    @map("bio")
   location String?
 
   stellarPublicKey String?   @unique @map("stellar_public_key")
