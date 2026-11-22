@@ -41,7 +41,11 @@ export interface CustodyPolicyResource {
 export interface DocumentPolicyResource {
   id: string;
   uploadedById: string;
+  kind?: string;
   adoption: { adopterId: string; ownerId: string } | null;
+  custody?: { holderId: string; pet?: { currentOwnerId: string | null } | null } | null;
+  dispute?: { participants: { userId: string }[] } | null;
+  assignedAdminIds?: string[];
 }
 
 export interface ResourcePolicy<TResource> {

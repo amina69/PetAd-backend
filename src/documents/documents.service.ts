@@ -7,12 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole } from '@prisma/client';
+import { EventsService } from '../events/events.service';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinary: CloudinaryService,
+    private readonly eventsService: EventsService,
   ) {}
 
   /**
@@ -21,7 +23,7 @@ export class DocumentsService {
    *
    * @throws NotFoundException if the document does not exist
    */
-  async findOne(documentId: string) {
+  async findOne(documentId: string, actorId?: string, actorRole?: string) {
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
       include: {
@@ -33,6 +35,22 @@ export class DocumentsService {
 
     if (!document) {
       throw new NotFoundException('Document not found');
+    }
+
+    const docAny = document as any;
+    const sensitiveKinds = ['ID', 'PASSPORT', 'GOVERNMENT_ID', 'IDENTITY'];
+    if (docAny.kind && sensitiveKinds.includes(String(docAny.kind).toUpperCase())) {
+      await this.eventsService.logEvent({
+        entityType: 'DOCUMENT' as any,
+        entityId: documentId,
+        eventType: 'DOCUMENT_ACCESSED' as any,
+        actorId: actorId ?? 'system',
+        payload: {
+          documentId,
+          kind: docAny.kind,
+          actorRole: actorRole ?? 'UNKNOWN',
+        },
+      });
     }
 
     return document;
