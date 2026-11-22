@@ -11,7 +11,8 @@ import { config as dotenvConfig } from 'dotenv';
 import { ErrorResponseDto } from './common/dto/error-response.dto';
 import { ErrorDetailDto } from './common/dto/error-response.dto';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
-import { validateEnv } from './config/env.validation';
+import { validateEnv, configuration } from './config/configuration';
+import { createSentryClient, SentryOptions } from './common/sentry/sentry.module.utils';
 
 // Load .env, then fail fast if the environment is invalid. Secret values
 // are validated but never surfaced in error messages (see env.validation).
@@ -48,6 +49,29 @@ async function bootstrap() {
   // All configuration is read through ConfigService (typed via configuration.ts).
   const port = configService.get<number>('port', 3000);
   const nodeEnv = configService.get<string>('nodeEnv', 'development');
+
+  // 11. Initialize Sentry error tracking (only when DSN is configured).
+  // Sentry is started early so that even early-boot errors are captured.
+  const sentryDsn = configService.get<string>('SENTRY_DSN');
+  if (sentryDsn) {
+    const sentryOptions: SentryOptions = {
+      dsn: sentryDsn,
+      environment: nodeEnv,
+      release: configuration().sentryDsn,
+    };
+    try {
+      createSentryClient(sentryOptions);
+      console.log(`Sentry initialized for environment: ${nodeEnv}`);
+    } catch (sentryInitError) {
+      // Never let Sentry init failure break application startup.
+      console.error(
+        'Failed to initialize Sentry',
+        sentryInitError instanceof Error ? sentryInitError.message : String(sentryInitError),
+      );
+    }
+  } else {
+    console.log('Sentry DSN not configured; error tracking disabled.');
+  }
   const corsConfig =
     configService.get<{
       enabled?: boolean;

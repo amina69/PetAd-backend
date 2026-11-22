@@ -1,5 +1,6 @@
 import type { AppConfig, RawEnvConfig } from './env.schema';
 import { validateEnv } from './env.validation';
+export { validateEnv };
 
 function parseCorsOrigins(raw: string): string[] {
   return raw

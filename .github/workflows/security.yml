@@ -1,0 +1,120 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Step 1: Dependency Scanning ───────────────────────────────
+  dependency-scanning:
+    name: Dependency Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+      - name: Fail on high/critical vulnerabilities
+        run: |
+          if [ -n "$(npm audit --audit-level=high --json 2>/dev/null | jq -r '.metadata.vulnerabilities // empty')" ]; then
+            echo "❌ High or critical vulnerabilities found!"
+            npm audit --audit-level=high --json 2>/dev/null | jq -r '.metadata.vulnerabilities | to_entries | .[].title' | head -10
+            exit 1
+          fi
+
+  # ─── Step 2: Secret Scanning ────────────────────────────────────
+  secret-scanning:
+    name: Secret Scanning with Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          curl -sL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-x86_64.tar.gz | tar -xzf - -C /usr/local/bin/
+
+      - name: Run Gitleaks scan
+        run: gitleaks protect --path=. --no-git --verbose
+
+  # ─── Step 3: Code Scanning with CodeQL ──────────────────────────
+  codeql:
+    name: GitHub CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-codescan: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript
+
+      - name: Auto-detect CodeQL configuration
+        run: |
+
+          # CodeQL is initialized above; this step is optional if you want to
+          # customize the setup, but the default setup usually works well.
+
+      - name: Build the project
+        run: npm run build
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # ─── Step 4: Docker Image Scanning with Trivy ───────────────────
+  trivy:
+    name: Trivy Docker Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t petad-backend:latest .
+
+      - name: Run Trivy scan
+        trivy:
+          image: aquasec/trivy:0.40.0
+          args: image petad-backend:latest --severity HIGH,CRITICAL
+
+  # ─── Step 5: Dependency Updates with Dependabot ─────────────────
+  dependabot:
+    name: Dependabot PRs
+    uses: ./.github/workflows/dependabot.yml
+    secrets:
+      npm-token: ${{ secrets.NPM_TOKEN }}
+
+  # ─── Step 6: Risk Management - Allowlist ────────────────────────
+  allowlist:
+    name: Security Risk Allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for allowlist configuration
+        run: |
+          if [ -f .sentry-allowlist.json ]; then
+            echo "✅ Sentry allowlist found"
+            cat .sentry-allowlist.json
+          else
+            echo "⚠️ No Sentry allowlist found - ensure all exceptions have justification and expiry"
+          fi
