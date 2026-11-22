@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import * as crypto from 'crypto';
+import { canonicalJSON } from './canonical-json.util';
 
 @ApiTags('Event Ledger')
 @Controller('admin/event-ledger')
@@ -30,16 +32,62 @@ export class EventLedgerController {
   }
 
   @Get(':aggregateId/integrity')
-  @ApiOperation({ summary: 'Check sequence number integrity for an aggregate' })
+  @ApiOperation({ summary: 'Check sequence number and hash-chain integrity for an aggregate' })
   @ApiParam({ name: 'aggregateId', description: 'Aggregate entity ID' })
   @ApiResponse({ status: 200, description: 'Integrity check result' })
   async checkIntegrity(@Param('aggregateId') aggregateId: string) {
     const gaps = await this.eventLedgerService.detectGaps(aggregateId);
+    const events = await this.eventLedgerService.getAggregateEvents(aggregateId);
+
+    let hashValid = true;
+    let firstBrokenSequence: number | null = null;
+    let expectedPrevHash: string | null = null;
+
+    for (const ev of events) {
+      if (ev.sequenceNumber === 1) {
+        if (ev.prevHash !== null) {
+          hashValid = false;
+          firstBrokenSequence = ev.sequenceNumber;
+          break;
+        }
+      } else {
+        if (ev.prevHash !== expectedPrevHash) {
+          hashValid = false;
+          firstBrokenSequence = ev.sequenceNumber;
+          break;
+        }
+      }
+
+      const canonicalObj = {
+        aggregate: ev.entityId,
+        seq: ev.sequenceNumber,
+        type: ev.eventType,
+        payload: ev.payload,
+        actor: ev.actorId ?? null,
+        schemaVersion: 1,
+        occurredAt: (ev as any).occurredAt ? new Date((ev as any).occurredAt).toISOString() : new Date(ev.createdAt).toISOString(),
+        prevHash: ev.prevHash,
+      };
+
+      // Note: if raw SQL modified payload or hash, we recompute and compare against stored eventHash
+      const calculatedHash = crypto.createHash('sha256').update(canonicalJSON(canonicalObj)).digest('hex');
+      if (calculatedHash !== ev.eventHash) {
+        hashValid = false;
+        firstBrokenSequence = ev.sequenceNumber;
+        break;
+      }
+
+      expectedPrevHash = ev.eventHash;
+    }
+
+    const valid = gaps.length === 0 && hashValid;
 
     return {
       aggregateId,
-      valid: gaps.length === 0,
+      valid,
       gaps,
+      hashValid,
+      firstBrokenSequence,
     };
   }
 
