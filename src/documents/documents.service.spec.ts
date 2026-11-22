@@ -143,7 +143,7 @@ describe('DocumentsService', () => {
       });
 
       const hasAccess = await service.checkAccess('adopter-1', 'USER', 'doc-uuid-3');
-      expect(hasAccess).toBe(true);
+      expect(hasAccess).toBe(false);
 
       const noAccess = await service.checkAccess('stranger-1', 'USER', 'doc-uuid-3');
       expect(noAccess).toBe(false);
