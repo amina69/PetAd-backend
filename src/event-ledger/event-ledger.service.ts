@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { canonicalJSON } from './canonical-json.util';
 import { EventEntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
@@ -57,7 +59,33 @@ export class EventLedgerService {
 
       const sequenceNumber = (latestEvent?.sequenceNumber ?? 0) + 1;
 
-      // Create the event with the allocated sequence number
+      const latestWithHash = await eventLog.findFirst({
+        where: { entityId: params.aggregateId },
+        orderBy: { sequenceNumber: 'desc' },
+        select: { eventHash: true },
+      });
+
+      const prevHash = latestWithHash?.eventHash ?? null;
+      const occurredAt = new Date().toISOString();
+      const schemaVersion = 1;
+
+      const canonicalObj = {
+        aggregate: params.aggregateId,
+        seq: sequenceNumber,
+        type: params.eventType,
+        payload: params.payload,
+        actor: params.actorId ?? null,
+        schemaVersion,
+        occurredAt,
+        prevHash,
+      };
+
+      const eventHash = crypto
+        .createHash('sha256')
+        .update(canonicalJSON(canonicalObj))
+        .digest('hex');
+
+      // Create the event with the allocated sequence number and hashes
       const event = await eventLog.create({
         data: {
           entityType: params.aggregateType,
@@ -66,6 +94,8 @@ export class EventLedgerService {
           actorId: params.actorId,
           payload: params.payload as Prisma.InputJsonValue,
           sequenceNumber,
+          prevHash,
+          eventHash,
         },
       });
 
