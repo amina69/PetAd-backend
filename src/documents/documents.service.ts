@@ -110,7 +110,6 @@ export class DocumentsService {
       mimeType: data.mimeType,
       size: data.size,
       uploadedBy: { connect: { id: data.uploadedById } },
-      scanStatus: 'PENDING',
       fileUrl: data.fileUrl || 'uploads/' + data.fileName,
       publicId: data.publicId || 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
     };
