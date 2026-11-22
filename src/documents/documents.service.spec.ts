@@ -132,7 +132,7 @@ describe('DocumentsService', () => {
     it('should enforce access policy when retrieving documents', async () => {
       mockPrismaService.document.findUnique.mockResolvedValue({
         id: 'doc-uuid-3',
-        userId: 'owner-1',
+        uploadedById: 'owner-1',
         adoptionId: 'adoption-1',
       });
 
