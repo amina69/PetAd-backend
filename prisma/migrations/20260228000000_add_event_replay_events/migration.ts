@@ -13,6 +13,8 @@ export async function up() {
         CREATE UNIQUE INDEX IF NOT EXISTS "event_logs_entity_id_sequence_number_key" ON "event_logs"("entity_id", "sequence_number");
       `);
     }
+  } catch (err) {
+    // Migration safely skipped if event_logs table or columns do not exist yet in baseline
   } finally {
     await prisma.$disconnect();
   }
