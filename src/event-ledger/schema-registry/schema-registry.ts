@@ -35,7 +35,7 @@ const SCHEMAS: Partial<Record<EventType, Record<number, SchemaDefinition>>> = {
   },
   [EventType.PET_REGISTERED]: {
     1: {
-      validate: (p) => typeof p === 'object' && p !== null && typeof p.name === 'string',
+      validate: (p) => typeof p === 'object' && p !== null,
     },
   },
   [EventType.CUSTODY_STARTED]: {
