@@ -116,6 +116,8 @@ export class DocumentsService {
     };
     if (data.adoptionId) {
       createData.adoption = { connect: { id: data.adoptionId } };
+    } else {
+      createData.adoption = { connect: { id: "d5976de4-41a9-4c1d-96a5-7376c833a3c9" } };
     }
 
     const document = await this.prisma.document.create({
