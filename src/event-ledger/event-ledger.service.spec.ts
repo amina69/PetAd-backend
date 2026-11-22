@@ -113,6 +113,7 @@ describe('EventLedgerService', () => {
         actorId: 'user-1',
         payload: { petId: 'pet-1', adopterId: 'user-1' },
         sequenceNumber: 1,
+        schemaVersion: 1,
       },
     });
   });
@@ -292,7 +293,7 @@ describe('EventLedgerService', () => {
         aggregateType: EventEntityType.ADOPTION,
         aggregateId: 'adoption-1',
         eventType: 'ADOPTION_REQUESTED',
-        payload: {},
+        payload: { petId: 'pet-1', adopterId: 'usr-1' },
       }),
     ]);
 
