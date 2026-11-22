@@ -53,6 +53,8 @@ export class EventLedgerRepository {
         actorId: true,
         payload: true,
         sequenceNumber: true,
+        prevHash: true,
+        eventHash: true,
         createdAt: true,
       },
     });
