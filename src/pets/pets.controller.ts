@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -126,10 +127,11 @@ export class PetsController {
   }
 
   @Get(':id/history')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
-    summary: 'Get pet movement timeline',
+    summary: 'Get pet movement timeline and chain of custody',
     description:
-      'Returns the complete movement history of a pet — every adoption and custody event in chronological order. Public endpoint (no auth required).',
+      'Returns ordered movement chain, custody hops, and anomaly detection. Supports ?format=json|csv. Public view is limited to counts and verified-chain badge.',
   })
   @ApiParam({
     name: 'id',
@@ -137,26 +139,35 @@ export class PetsController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Pet movement history',
+    description: 'Pet movement history and custody chain',
     schema: {
       example: {
         petId: '550e8400-e29b-41d4-a716-446655440000',
         petName: 'Buddy',
-        timeline: [
-          {
-            eventType: 'CUSTODY_STARTED',
-            summary: 'Custody started',
-            occurredAt: '2024-01-01T00:00:00.000Z',
-            stellarTxHash: 'stellar-tx-hash-abc',
-            anchorStatus: 'ANCHORED',
-          },
-        ],
+        verifiedChain: true,
+        anomalyCount: 0,
+        anomalies: [],
+        custodyChain: [],
+        timeline: [],
       },
     },
   })
   @ApiResponse({ status: 404, description: 'Pet not found' })
-  async getMovementHistory(@Param('id') petId: string) {
-    return this.petMovementService.getMovementHistory(petId);
+  async getMovementHistory(
+    @Param('id') petId: string,
+    @Query('format') format: 'json' | 'csv' = 'json',
+    @Request() req: { user?: { userId?: string; role?: string } },
+    @Res({ passthrough: true }) res?: any,
+  ) {
+    const result = await this.petMovementService.getMovementHistory(
+      petId,
+      format,
+      req.user,
+    );
+    if (format === 'csv' && res) {
+      res.setHeader('Content-Type', 'text/csv');
+    }
+    return result;
   }
 
   @Patch(':id')
