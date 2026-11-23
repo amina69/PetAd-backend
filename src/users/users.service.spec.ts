@@ -31,6 +31,7 @@ const mockPrisma = {
 };
 
 const mockEventsService = {
+  appendEvent: jest.fn().mockResolvedValue({ id: 'event-1' }),
   logEvent: jest.fn(),
 };
 
