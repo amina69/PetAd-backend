@@ -20,6 +20,9 @@ import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { ApprovalsModule } from './approvals/approvals.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { StatusModule } from './status/status.module';
 import { configuration } from './config/configuration';
 
 @Module({
@@ -55,6 +58,9 @@ import { configuration } from './config/configuration';
     JobsModule,
     AdminModule,
     EventLedgerModule,
+    ApprovalsModule,
+    DisputesModule,
+    StatusModule,
   ],
 
   controllers: [AppController],

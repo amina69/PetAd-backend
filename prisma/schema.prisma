@@ -76,12 +76,43 @@ enum EscrowStatus {
   DISPUTED
 }
 
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  WITHDRAWN
+  RESOLUTION_PENDING
+}
+
+enum DisputeOutcome {
+  RELEASE_TO_OWNER
+  REFUND_TO_HOLDER
+  SPLIT
+}
+
+enum NotificationType {
+  APPROVAL_STATUS
+  DISPUTE_UPDATE
+  CUSTODY_STATUS
+  ADOPTION_STATUS
+  SEARCH_MATCH
+  SYSTEM
+}
+
+enum DisputeReason {
+  PET_CONDITION
+  CUSTODY_VIOLATION
+  PAYMENT_ISSUE
+  OTHER
+}
+
 enum EventEntityType {
   USER
   PET
   ADOPTION
   CUSTODY
   ESCROW
+  DISPUTE
 }
 
 enum EventType {
@@ -108,6 +139,13 @@ enum EventType {
   ESCROW_FUNDED
   ESCROW_RELEASED
   ESCROW_REFUNDED
+  DISPUTE_OPENED
+  DISPUTE_UPDATED
+  DISPUTE_RESOLVED
+  DISPUTE_COMMENT_ADDED
+  DISPUTE_EVIDENCE_ADDED
+  DISPUTE_ASSIGNED
+  DISPUTE_WITHDRAWN
   TRUST_SCORE_UPDATED
   USER_SUSPENDED
   USER_REINSTATED
@@ -177,13 +215,20 @@ model User {
 
   custodiesHeld Custody[] @relation("CustodyHolder")
 
-  events EventLog[] @relation("ActorEvents")
+  events        EventLog[]      @relation("ActorEvents")
+  statusHistory StatusHistory[] @relation("StatusHistoryActor")
 
   documents Document[]
   passwordResetTokens PasswordResetToken[]
   sessions    Session[]
 
   dataExports DataExport[]
+
+  disputesFiled    Dispute[] @relation("DisputeFiler")
+  disputesResolved Dispute[] @relation("DisputeResolver")
+  disputesAssigned Dispute[] @relation("DisputeAdmin")
+  notifications    Notification[]
+  disputeComments DisputeComment[]
 
   @@index([status])
   @@map("users")
@@ -255,6 +300,8 @@ model Adoption {
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
   
   documents Document[]
+  disputes  Dispute[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -282,6 +329,8 @@ model Custody {
 
   escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
+
+  disputes Dispute[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -373,6 +422,81 @@ model Document {
   @@map("documents")
 }
 
+// ─── Dispute System ──────────────────────────────────────
+
+model Dispute {
+  id          String        @id @default(uuid())
+  status      DisputeStatus @default(OPEN)
+  reason      DisputeReason
+  description String
+
+  filedById String @map("filed_by_id")
+  filedBy   User   @relation("DisputeFiler", fields: [filedById], references: [id])
+
+  // Exactly one of these must be non-null (enforced at the application layer
+  // and by a DB check constraint in the migration).
+  adoptionId String?  @map("adoption_id")
+  adoption   Adoption? @relation(fields: [adoptionId], references: [id])
+
+  custodyId String?  @map("custody_id")
+  custody   Custody? @relation(fields: [custodyId], references: [id])
+
+  // Admin assignment — required before entering UNDER_REVIEW
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("DisputeAdmin", fields: [assignedToId], references: [id])
+
+  // Resolution fields
+  outcome      DisputeOutcome? @map("outcome")
+  splitPercent Int?            @map("split_percent") // 1-99, owner's share when outcome=SPLIT
+  resolution   String?
+  resolvedById String?   @map("resolved_by_id")
+  resolvedBy   User?     @relation("DisputeResolver", fields: [resolvedById], references: [id])
+  resolvedAt   DateTime? @map("resolved_at")
+
+  comments  DisputeComment[]
+  evidence  DisputeEvidence[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([adoptionId])
+  @@index([custodyId])
+  @@index([filedById])
+  @@map("disputes")
+}
+
+model DisputeComment {
+  id       String @id @default(uuid())
+  body     String
+  internal Boolean @default(false)
+
+  disputeId String  @map("dispute_id")
+  dispute   Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  authorId String @map("author_id")
+  author   User   @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([disputeId])
+  @@map("dispute_comments")
+}
+
+model DisputeEvidence {
+  id       String @id @default(uuid())
+  fileUrl  String @map("file_url")
+  fileName String @map("file_name")
+
+  disputeId String  @map("dispute_id")
+  dispute   Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([disputeId])
+  @@map("dispute_evidence")
+}
+
 model DataExport {
   id           String           @id @default(uuid())
   userId       String           @map("user_id")
@@ -390,4 +514,43 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+// ─── Notifications ───────────────────────────────────────
+
+model Notification {
+  id                 String           @id @default(uuid())
+  userId             String           @map("user_id")
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               NotificationType
+  title              String
+  body               String
+  data               Json?
+  relatedEntityRoute String?          @map("related_entity_route")
+  readAt             DateTime?        @map("read_at")
+  // retentionDays: 0 means keep forever; >0 triggers cleanup job (issue 172)
+  retentionDays      Int              @default(0) @map("retention_days")
+  createdAt          DateTime         @default(now()) @map("created_at")
+
+  // Composite index for unread-count queries: userId, readAt=null, ordered by createdAt desc
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// Read-model projection rebuilt from EventLog. Powers status timelines on
+// adoptions, custodies, escrows, and disputes without parsing raw payloads.
+model StatusHistory {
+  id         String          @id @default(uuid())
+  entityType EventEntityType @map("entity_type")
+  entityId   String          @map("entity_id")
+  from       String
+  to         String
+  actorId    String?         @map("actor_id")
+  actor      User?           @relation("StatusHistoryActor", fields: [actorId], references: [id])
+  reason     String?
+  at         DateTime
+
+  @@index([entityType, entityId])
+  @@index([entityId, at])
+  @@map("status_history")
 }
