@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Param,
   Body,
@@ -23,6 +24,7 @@ import {
   CurrentUser,
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
+import { SchedulerService } from '../scheduler/scheduler.service';
 import { EventReplayService } from './services/event-replay.service';
 import { ReplayEventsDto } from './dto/replay-events.dto';
 import { EventReplayResponseDto } from './dto/event-replay-response.dto';
@@ -33,7 +35,13 @@ import { EventReplayResponseDto } from './dto/event-replay-response.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class AdminController {
-  constructor(private readonly eventReplayService: EventReplayService) {}
+  constructor(private readonly eventReplayService: EventReplayService, private readonly schedulerService: SchedulerService) {}
+
+  @Get('scheduler')
+  @ApiOperation({ summary: 'List scheduled jobs and their last execution (admin only)' })
+  async schedulerStatus() {
+    return this.schedulerService.status();
+  }
 
   /**
    * POST /admin/replay/:aggregateId
