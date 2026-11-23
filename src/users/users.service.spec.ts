@@ -25,7 +25,7 @@ const mockPrisma = {
     count: jest.fn(),
   },
   escrow: { findMany: jest.fn() },
-  document: { findMany: jest.fn(), deleteMany: jest.fn() },
+  document: { findMany: jest.fn(), deleteMany: jest.fn(), create: jest.fn(), findFirst: jest.fn() },
   appLog: { findMany: jest.fn(), update: jest.fn() },
   $transaction: jest.fn(),
 };
