@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole } from '@prisma/client';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class DocumentsService {
@@ -106,5 +107,70 @@ export class DocumentsService {
       message: 'Documents uploaded successfully',
       documents: createdDocuments,
     };
+  }
+
+  async purgeExpiredDocuments(): Promise<{ purgedCount: number; tombstonedCount: number }>
+  {
+    const now = new Date();
+    const allDocs = await this.prisma.document.findMany({
+      where: {
+        fileUrl: { not: '' },
+      },
+      include: {
+        adoption: {
+          select: { id: true, status: true, updatedAt: true },
+        },
+      },
+    });
+
+    const docs = allDocs.filter((d: any) => !d.legalHold && !d.deletedAt);
+
+    let purgedCount = 0;
+    let tombstonedCount = 0;
+
+    for (const doc of docs) {
+      let shouldDelete = false;
+      const createdAt = doc.createdAt;
+      const ageDays = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+
+      const kind = doc.mimeType?.includes('pdf') ? 'agreement' : 'other';
+
+      const adoption = (doc as any).adoption;
+      if (adoption) {
+        if (adoption.status === 'REJECTED') {
+          if (ageDays >= 30) {
+            shouldDelete = true;
+          }
+        } else if (adoption.status === 'COMPLETED' || adoption.status === 'CANCELLED') {
+          const adoptionAgeDays = (now.getTime() - adoption.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+          if (adoptionAgeDays >= 90) {
+            shouldDelete = true;
+          }
+        }
+      } else {
+        if (ageDays >= 30) {
+          shouldDelete = true;
+        }
+      }
+
+      if (shouldDelete) {
+        let fileHash = doc.publicId;
+        if (!fileHash && doc.fileUrl) {
+          fileHash = crypto.createHash('sha256').update(doc.fileUrl).digest('hex');
+        }
+
+        await this.prisma.document.update({
+          where: { id: doc.id },
+          data: {
+            fileUrl: '',
+            publicId: fileHash,
+          },
+        });
+        purgedCount++;
+        tombstonedCount++;
+      }
+    }
+
+    return { purgedCount, tombstonedCount };
   }
 }
