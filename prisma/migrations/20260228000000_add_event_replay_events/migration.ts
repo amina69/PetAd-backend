@@ -19,10 +19,15 @@ export async function up() {
       `);
     }
 
-    await prisma.$executeRawUnsafe(`
-      -- CreateIndex
-      CREATE UNIQUE INDEX IF NOT EXISTS "event_logs_entity_id_sequence_number_key" ON "event_logs"("entity_id", "sequence_number");
+    const colCheck: any[] = await prisma.$queryRawUnsafe(`
+      SELECT column_name FROM information_schema.columns WHERE table_name = 'event_logs' AND column_name = 'sequence_number';
     `);
+    if (colCheck && colCheck.length > 0) {
+      await prisma.$executeRawUnsafe(`
+        -- CreateIndex
+        CREATE UNIQUE INDEX IF NOT EXISTS "event_logs_entity_id_sequence_number_key" ON "event_logs"("entity_id", "sequence_number");
+      `);
+    }
   } finally {
     await prisma.$disconnect();
   }
