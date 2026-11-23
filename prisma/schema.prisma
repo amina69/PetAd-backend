@@ -82,6 +82,25 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  APPROVAL
+}
+
+enum ApprovalType {
+  ADOPTION
+  CUSTODY
+  ESCROW_RELEASE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DecisionType {
+  APPROVE
+  REJECT
 }
 
 enum EventType {
@@ -112,6 +131,10 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  APPROVAL_REQUESTED
+  APPROVAL_APPROVED
+  APPROVAL_REJECTED
+  APPROVAL_EXPIRED
 }
 
 enum LogLevel {
@@ -184,6 +207,10 @@ model User {
   sessions    Session[]
 
   dataExports DataExport[]
+
+  approvalRequestsMade     ApprovalRequest[]  @relation("ApprovalRequester")
+  approvalRequestsReviewed ApprovalRequest[]  @relation("ApprovalReviewer")
+  approvalDecisions        ApprovalDecision[] @relation("ApprovalDecider")
 
   @@index([status])
   @@map("users")
@@ -371,6 +398,56 @@ model Document {
   adoption     Adoption @relation(fields: [adoptionId], references: [id])
 
   @@map("documents")
+}
+
+model ApprovalRequest {
+  id          String         @id @default(uuid())
+  type        ApprovalType
+  status      ApprovalStatus @default(PENDING)
+  referenceId String         @map("reference_id")
+  requesterId String         @map("requester_id")
+  requester   User           @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  reviewerId  String?        @map("reviewer_id")
+  reviewer    User?          @relation("ApprovalReviewer", fields: [reviewerId], references: [id])
+  expiresAt   DateTime?      @map("expires_at")
+  notes       String?
+  decisions   ApprovalDecision[]
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([requesterId])
+  @@index([referenceId])
+  @@index([expiresAt])
+  @@map("approval_requests")
+}
+
+model ApprovalDecision {
+  id               String           @id @default(uuid())
+  approvalRequestId String          @map("approval_request_id")
+  approvalRequest  ApprovalRequest  @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  deciderId        String           @map("decider_id")
+  decider          User             @relation("ApprovalDecider", fields: [deciderId], references: [id])
+  decision         DecisionType
+  reason           String?
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@index([approvalRequestId])
+  @@index([deciderId])
+  @@map("approval_decisions")
+}
+
+model ReconciliationRun {
+  id              String   @id @default(uuid())
+  startedAt       DateTime @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  escrowsChecked  Int      @default(0) @map("escrows_checked")
+  discrepancies   Int      @default(0)
+  details         Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([startedAt])
+  @@map("reconciliation_runs")
 }
 
 model DataExport {
