@@ -268,12 +268,12 @@ export class UsersService {
     });
 
     // Ledger payloads only carry ids so replays remain valid without PII.
-    await this.eventsService.logEvent({
-      entityType: 'USER',
-      entityId: id,
+    await this.eventsService.appendEvent({
+      aggregateType: 'USER',
+      aggregateId: id,
       eventType: 'USER_DELETED',
       actorId: actor.actorId,
-      payload: { userId: id },
+      payload: { deletedAt: now },
     });
 
     return {
