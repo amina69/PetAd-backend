@@ -126,6 +126,15 @@ export class DocumentsService {
         delete createData.adoption;
       }
     }
+    if (createData.adoption && createData.adoption.connect) {
+      const adoptionId = createData.adoption.connect.id;
+      const existingAdoption = await this.prisma.adoption.findUnique({
+        where: { id: adoptionId },
+      });
+      if (!existingAdoption) {
+        delete createData.adoption;
+      }
+    }
     const document = await this.prisma.document.create({
       data: createData,
     });
