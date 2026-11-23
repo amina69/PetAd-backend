@@ -18,6 +18,11 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly config: ConfigService) {}
 
   async onModuleInit(): Promise<void> {
+    // Keep disabled until domain handlers are wired; never enqueue failing maintenance jobs in production.
+    if (process.env.SCHEDULER_ENABLED !== 'true') {
+      this.logger.warn('Scheduler disabled: set SCHEDULER_ENABLED=true only after handlers are implemented');
+      return;
+    }
     const connection = getRedisConnection(this.config);
     this.queue = new Queue(SCHEDULER_QUEUE, { connection });
     for (const schedule of SCHEDULES) {
