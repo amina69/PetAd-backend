@@ -14,6 +14,7 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 const mockEventsService = {
   appendEvent: jest.fn().mockResolvedValue({ id: 'event-1' }),
+  logEvent: jest.fn(),
 };
 
 const mockPrisma = {
