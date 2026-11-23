@@ -12,6 +12,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
+const mockEventsService = {
+  appendEvent: jest.fn().mockResolvedValue({ id: 'event-1' }),
+};
+
 const mockPrisma = {
   user: {
     findUnique: jest.fn(),
@@ -67,8 +71,9 @@ describe('UsersService', () => {
       providers: [
         UsersService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: EventsService, useValue: mockEventsService },
         { provide: CloudinaryService, useValue: mockCloudinary },
+        { provide: NotificationQueueService, useValue: mockNotificationQueue },
+        { provide: EventsService, useValue: mockEventsService },
       ],
     }).compile();
 
