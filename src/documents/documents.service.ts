@@ -119,6 +119,15 @@ export class DocumentsService {
       createData.adoption = { connect: { id: "d5976de4-41a9-4c1d-96a5-7376c833a3c9" } };
     }
 
+    // Ensure adoption exists or handle optional connection gracefully if not present
+    if (createData.adoption && createData.adoption.connect) {
+      const adoptionExists = await this.prisma.adoption.findUnique({
+        where: { id: createData.adoption.connect.id },
+      });
+      if (!adoptionExists) {
+        delete createData.adoption;
+      }
+    }
     const document = await this.prisma.document.create({
       data: createData,
     });
