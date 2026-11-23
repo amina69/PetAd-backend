@@ -109,7 +109,12 @@ export function loadDocumentForActor(
           uploadedById: true,
           adoption: { select: { adopterId: true, ownerId: true } },
         },
-      }),
+      }).then((doc: any) => ({
+        ...doc,
+        kind: doc.kind ?? undefined,
+        custody: null,
+        dispute: null,
+      })),
     'Document',
   );
 }
