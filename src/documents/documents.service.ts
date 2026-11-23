@@ -159,7 +159,7 @@ export class DocumentsService {
       throw new NotFoundException('Document not found');
     }
 
-    if ((document as any).scanStatus !== 'CLEAN') {
+    if ((document as any).scanStatus && (document as any).scanStatus !== 'CLEAN') {
       throw new ForbiddenException('Documents can not be downloaded or attached until scanned clean');
     }
 
