@@ -120,6 +120,42 @@ enum LogLevel {
   ERROR
 }
 
+enum NotificationType {
+  ADOPTION_UPDATE
+  CUSTODY_UPDATE
+  ESCROW_UPDATE
+  DISPUTE_UPDATE
+  MESSAGE
+  SYSTEM
+  MARKETING
+  SECURITY_PASSWORD_CHANGED
+  SECURITY_2FA
+  SECURITY_NEW_DEVICE
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum DisputeReason {
+  NOT_AS_DESCRIBED
+  NO_SHOW
+  PET_UNWELL
+  DAMAGE
+  PAYMENT
+  FRAUD
+  OTHER
+}
+
+enum DisputeEntityType {
+  ADOPTION
+  CUSTODY
+  ESCROW
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
@@ -184,6 +220,13 @@ model User {
   sessions    Session[]
 
   dataExports DataExport[]
+
+  notifications            Notification[]
+  notificationPreferences  NotificationPreference[]
+
+  disputesRaised     Dispute[] @relation("DisputesRaised")
+  disputesAgainst    Dispute[] @relation("DisputesAgainst")
+  disputesAssigned   Dispute[] @relation("DisputesAssigned")
 
   @@index([status])
   @@map("users")
@@ -390,4 +433,76 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+model Notification {
+  id     String           @id @default(uuid())
+  userId String           @map("user_id")
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   NotificationType
+
+  title String
+  body  String
+  data  Json?
+
+  // `isRead` is never stored: the API derives it from `readAt` so the two
+  // can never disagree.
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Cursor pagination is ordered by (createdAt DESC, id DESC).
+  @@index([userId, createdAt, id])
+  @@index([userId, readAt])
+  @@index([userId, type])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id     String           @id @default(uuid())
+  userId String           @map("user_id")
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   NotificationType
+
+  inApp Boolean @default(true) @map("in_app")
+  email Boolean @default(true)
+  push  Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+model Dispute {
+  id         String            @id @default(uuid())
+  status     DisputeStatus     @default(OPEN)
+  reason     DisputeReason
+  entityType DisputeEntityType @map("entity_type")
+  entityId   String            @map("entity_id")
+
+  description String?
+
+  raisedById String @map("raised_by_id")
+  raisedBy   User   @relation("DisputesRaised", fields: [raisedById], references: [id])
+
+  // The other party. Nullable because some disputes are platform-level.
+  respondentId String? @map("respondent_id")
+  respondent   User?   @relation("DisputesAgainst", fields: [respondentId], references: [id])
+
+  assigneeId String? @map("assignee_id")
+  assignee   User?   @relation("DisputesAssigned", fields: [assigneeId], references: [id])
+
+  resolvedAt DateTime? @map("resolved_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([reason])
+  @@index([entityType, entityId])
+  @@index([raisedById])
+  @@index([respondentId])
+  @@index([assigneeId])
+  @@index([createdAt])
+  @@map("disputes")
 }
