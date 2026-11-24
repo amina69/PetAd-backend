@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import {
@@ -47,6 +47,14 @@ export class EscrowService {
 
       if (!escrow) {
         throw new NotFoundException('Escrow not found');
+      }
+
+      // Refuse release while a dispute is open (#294)
+      if (escrow.status === EscrowStatus.DISPUTED) {
+        throw new ConflictException({
+          message: 'Escrow is frozen while a dispute is open.',
+          code: 'ESCROW_FROZEN_BY_DISPUTE',
+        });
       }
 
       // 1. Update Escrow Status
@@ -114,6 +122,14 @@ export class EscrowService {
 
       if (!escrow) {
         throw new NotFoundException('Escrow not found');
+      }
+
+      // Refuse refund while a dispute is open (#294)
+      if (escrow.status === EscrowStatus.DISPUTED) {
+        throw new ConflictException({
+          message: 'Escrow is frozen while a dispute is open.',
+          code: 'ESCROW_FROZEN_BY_DISPUTE',
+        });
       }
 
       const updatedEscrow = await tx.escrow.update({
