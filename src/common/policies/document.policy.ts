@@ -23,8 +23,16 @@ export class DocumentPolicy implements ResourcePolicy<DocumentPolicyResource> {
     const isParty =
       document.adoption?.adopterId === actor.userId ||
       document.adoption?.ownerId === actor.userId;
+    const isConversationParticipant =
+      document.conversationParticipantIds?.includes(actor.userId) ?? false;
+    const isProfileOwner = document.profileOwnerId === actor.userId;
 
-    if (!isUploader && !isParty) {
+    if (
+      !isUploader &&
+      !isParty &&
+      !isConversationParticipant &&
+      !isProfileOwner
+    ) {
       return false;
     }
 

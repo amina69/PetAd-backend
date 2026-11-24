@@ -25,7 +25,10 @@ export class AuthService {
   >();
 
   private recordFailedAttempt(key: string) {
-    const current = this.loginAttempts.get(key) || { count: 0, lastAttempt: Date.now() };
+    const current = this.loginAttempts.get(key) || {
+      count: 0,
+      lastAttempt: Date.now(),
+    };
     this.loginAttempts.set(key, {
       count: current.count + 1,
       lastAttempt: Date.now(),
@@ -39,7 +42,11 @@ export class AuthService {
     private readonly emailService?: EmailService,
   ) {}
 
-  private async generateAccessToken(user: { id: string; email: string; role: string }) {
+  private async generateAccessToken(user: {
+    id: string;
+    email: string;
+    role: string;
+  }) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     return this.jwtService.sign(payload);
   }
@@ -64,7 +71,9 @@ export class AuthService {
         where: { familyId: session.familyId },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Refresh token reuse detected. Session revoked.');
+      throw new UnauthorizedException(
+        'Refresh token reuse detected. Session revoked.',
+      );
     }
 
     if (session.expiresAt < new Date()) {
@@ -79,7 +88,12 @@ export class AuthService {
 
     // Generate new rotated refresh token in the same family
     const newAccessToken = await this.generateAccessToken(session.user);
-    const newRefreshToken = await this.generateRefreshToken(session.userId, userAgent, ip, session.familyId);
+    const newRefreshToken = await this.generateRefreshToken(
+      session.userId,
+      userAgent,
+      ip,
+      session.familyId,
+    );
 
     return {
       access_token: newAccessToken,
@@ -90,6 +104,7 @@ export class AuthService {
         firstName: session.user.firstName,
         lastName: session.user.lastName,
         role: session.user.role,
+        emailVerified: session.user.emailVerified,
       },
     };
   }
@@ -110,6 +125,7 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      emailVerified: user.emailVerified,
     };
   }
 
@@ -120,17 +136,22 @@ export class AuthService {
   async cleanupExpiredSessions() {
     return this.prisma.session.deleteMany({
       where: {
-        OR: [
-          { expiresAt: { lt: new Date() } },
-          { revokedAt: { not: null } },
-        ],
+        OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { not: null } }],
       },
     });
   }
 
-  private async generateRefreshToken(userId: string, userAgent?: string, ip?: string, familyId?: string) {
+  private async generateRefreshToken(
+    userId: string,
+    userAgent?: string,
+    ip?: string,
+    familyId?: string,
+  ) {
     const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     const resolvedFamilyId = familyId || crypto.randomUUID();
 
@@ -168,8 +189,14 @@ export class AuthService {
       },
     });
 
+    await this.issueEmailVerification(user.id, user.email);
+
     const access_token = await this.generateAccessToken(user);
-    const refresh_token = await this.generateRefreshToken(user.id, userAgent, ip);
+    const refresh_token = await this.generateRefreshToken(
+      user.id,
+      userAgent,
+      ip,
+    );
 
     return {
       access_token,
@@ -180,11 +207,101 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        emailVerified: user.emailVerified,
       },
     };
   }
 
-async login(dto: LoginDto, userAgent?: string, ip?: string) {
+  /**
+   * Confirms an email-verification token. Messaging endpoints require a
+   * verified address, so this is the only way for a new account to unlock them.
+   */
+  async verifyEmail(token: string) {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const user = await this.prisma.user.findUnique({
+      where: { emailVerificationTokenHash: tokenHash },
+    });
+
+    if (
+      !user ||
+      !user.emailVerificationExpiresAt ||
+      user.emailVerificationExpiresAt < new Date()
+    ) {
+      throw new BadRequestException(
+        'Invalid or expired email verification token',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+        emailVerificationTokenHash: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { message: 'Email verified', emailVerified: true };
+  }
+
+  /** Re-sends the verification email to the authenticated account. */
+  async resendEmailVerification(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user || user.status === UserStatus.DELETED) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.emailVerified) {
+      return { message: 'Email already verified', emailVerified: true };
+    }
+
+    await this.issueEmailVerification(user.id, user.email);
+
+    return { message: 'Verification email sent', emailVerified: false };
+  }
+
+  private async issueEmailVerification(userId: string, email: string) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerificationTokenHash: tokenHash,
+        emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    if (this.emailService) {
+      try {
+        await this.emailService.sendTransactionalEmail({
+          to: email,
+          subject: 'Verify your PetAd email address',
+          text: `Your email verification code is: ${rawToken}. It expires in 24 hours.`,
+        });
+      } catch (err) {
+        this.logger.error(`Failed to send verification email: ${err}`);
+      }
+    }
+
+    return rawToken;
+  }
+
+  async login(dto: LoginDto, userAgent?: string, ip?: string) {
     const key = dto.email;
     const attempts = this.loginAttempts.get(key);
     if (
@@ -212,10 +329,14 @@ async login(dto: LoginDto, userAgent?: string, ip?: string) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-this.loginAttempts.delete(key);
+    this.loginAttempts.delete(key);
 
     const access_token = await this.generateAccessToken(user);
-    const refresh_token = await this.generateRefreshToken(user.id, userAgent, ip);
+    const refresh_token = await this.generateRefreshToken(
+      user.id,
+      userAgent,
+      ip,
+    );
 
     return {
       access_token,
@@ -226,6 +347,7 @@ this.loginAttempts.delete(key);
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        emailVerified: user.emailVerified,
       },
     };
   }
@@ -237,7 +359,7 @@ this.loginAttempts.delete(key);
     const rateLimitWindowMs = 60 * 1000;
 
     if (now - lastRequest < rateLimitWindowMs) {
-this.logger.warn(
+      this.logger.warn(
         `Rate limit exceeded for forgot password: ${rateLimitKey}`,
       );
       // Return 202 identical response for anti-enumeration and rate-limiting

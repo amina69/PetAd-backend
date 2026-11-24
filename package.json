@@ -35,9 +35,11 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.2.11",
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.2.11",
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.1",
     "archiver": "^7.0.1",
@@ -58,6 +60,7 @@
     "prisma": "^7.4.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.4",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
