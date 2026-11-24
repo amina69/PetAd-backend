@@ -3,6 +3,7 @@ import { PetsService } from './pets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PetsRepository } from './pets.repository';
 import { PetAvailabilityService } from './services/pet-availability.service';
+import { SheltersService } from '../users/shelters/shelters.service';
 import {
   NotFoundException,
   ForbiddenException,
@@ -39,6 +40,10 @@ const mockAvailabilityService = {
   resolve: jest.fn(),
 };
 
+const mockSheltersService = {
+  assertCanPublish: jest.fn(),
+};
+
 describe('PetsService', () => {
   let service: PetsService;
 
@@ -52,11 +57,28 @@ describe('PetsService', () => {
           provide: PetAvailabilityService,
           useValue: mockAvailabilityService,
         },
+        { provide: SheltersService, useValue: mockSheltersService },
       ],
     }).compile();
 
     service = module.get<PetsService>(PetsService);
     jest.clearAllMocks();
+    mockSheltersService.assertCanPublish.mockResolvedValue(undefined);
+  });
+
+  it('refuses to create a listing when the shelter is not verified', async () => {
+    mockSheltersService.assertCanPublish.mockRejectedValue(
+      new ForbiddenException('Shelter must be verified'),
+    );
+
+    await expect(
+      service.create(
+        { name: 'Buddy', species: 'DOG' } as CreatePetDto,
+        'shelter-1',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(mockPrisma.pet.create).not.toHaveBeenCalled();
   });
 
   it('should create a pet', async () => {
@@ -74,6 +96,7 @@ describe('PetsService', () => {
 
     const result = await service.create(dto, ownerId);
 
+    expect(mockSheltersService.assertCanPublish).toHaveBeenCalledWith(ownerId);
     expect(result).toMatchObject({
       name: 'Buddy',
       species: 'DOG',

@@ -24,6 +24,7 @@ import { UserRole } from '../common/enums';
 import { PetStatus } from '../common/enums/pet-status.enum';
 import { PetAvailabilityService } from './services/pet-availability.service';
 import { petAvailabilityReducer } from '../events/reducers/pet-availability.reducer';
+import { SheltersService } from '../users/shelters/shelters.service';
 
 export interface PetsViewer {
   role?: string;
@@ -44,18 +45,40 @@ function roundCoordinate(value: number): number {
 const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 200;
 
+/** Owner fields needed to expose the verified-shelter badge on a listing. */
+const OWNER_SHELTER_INCLUDE = {
+  include: {
+    shelterProfile: { select: { verificationStatus: true } },
+  },
+} as const;
+
+type PetWithOwnerShelter = {
+  currentOwner?: {
+    shelterProfile?: { verificationStatus: string } | null;
+  } | null;
+};
+
+function withShelterBadge<T extends PetWithOwnerShelter>(pet: T) {
+  return {
+    ...pet,
+    shelterVerified:
+      pet.currentOwner?.shelterProfile?.verificationStatus === 'VERIFIED',
+  };
+}
+
 @Injectable()
 export class PetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly petsRepository: PetsRepository,
     private readonly availabilityService: PetAvailabilityService,
+    private readonly sheltersService: SheltersService,
   ) {}
 
   async getPetById(petId: string) {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
-      include: { currentOwner: true },
+      include: { currentOwner: OWNER_SHELTER_INCLUDE },
     });
 
     if (!pet) {
@@ -65,14 +88,17 @@ export class PetsService {
     const computedStatus = await this.availabilityService.resolve(petId);
 
     return {
-      ...pet,
+      ...withShelterBadge(pet),
       computedStatus,
       isAvailable: computedStatus === PetStatus.AVAILABLE,
     };
   }
 
   async create(createPetDto: CreatePetDto, ownerId: string) {
-    return this.prisma.pet.create({
+    // Unverified shelters are blocked from publishing listings entirely.
+    await this.sheltersService.assertCanPublish(ownerId);
+
+    const pet = await this.prisma.pet.create({
       data: {
         ...createPetDto,
         ...(createPetDto.latitude !== undefined && {
@@ -83,8 +109,10 @@ export class PetsService {
         }),
         currentOwnerId: ownerId,
       },
-      include: { currentOwner: true },
+      include: { currentOwner: OWNER_SHELTER_INCLUDE },
     });
+
+    return withShelterBadge(pet);
   }
 
   async findAll(searchDto: SearchPetsDto = {}, viewer: PetsViewer = {}) {
@@ -153,7 +181,7 @@ export class PetsService {
         skip,
         take: limit,
         include: {
-          currentOwner: true,
+          currentOwner: OWNER_SHELTER_INCLUDE,
           adoptions: {
             where: {
               status: {
@@ -177,7 +205,7 @@ export class PetsService {
       pets.map(async (pet) => {
         const computedStatus = await this.availabilityService.resolve(pet.id);
         return {
-          ...pet,
+          ...withShelterBadge(pet),
           computedStatus,
           isAvailable: computedStatus === PetStatus.AVAILABLE,
         };
@@ -255,7 +283,7 @@ export class PetsService {
         ? await this.prisma.pet.findMany({
             where: { id: { in: pageIds } },
             include: {
-              currentOwner: true,
+              currentOwner: OWNER_SHELTER_INCLUDE,
               adoptions: {
                 where: {
                   status: {
@@ -282,7 +310,7 @@ export class PetsService {
       orderedPets.map(async (pet) => {
         const computedStatus = await this.availabilityService.resolve(pet.id);
         return {
-          ...pet,
+          ...withShelterBadge(pet),
           computedStatus,
           isAvailable: computedStatus === PetStatus.AVAILABLE,
           distanceKm: distanceById.get(pet.id),

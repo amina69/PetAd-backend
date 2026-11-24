@@ -158,10 +158,11 @@ describe('UsersService', () => {
       expect(profile.displayName).toBe('Madonna');
     });
 
-    it('assigns VERIFIED_SHELTER badge to shelter users', async () => {
+    it('assigns VERIFIED_SHELTER badge to verified shelter users', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         ...mockUser,
         role: 'SHELTER',
+        shelterProfile: { verificationStatus: 'VERIFIED' },
         stellarPublicKey: null,
         trustScore: 60,
       });
@@ -170,6 +171,21 @@ describe('UsersService', () => {
 
       const profile = await service.getPublicProfile('usr-1');
       expect(profile.verifiedBadges).toEqual(['VERIFIED_SHELTER']);
+    });
+
+    it('does not badge a shelter whose application is still pending', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        role: 'SHELTER',
+        shelterProfile: { verificationStatus: 'PENDING' },
+        stellarPublicKey: null,
+        trustScore: 60,
+      });
+      mockPrisma.adoption.count.mockResolvedValue(0);
+      mockPrisma.custody.count.mockResolvedValue(0);
+
+      const profile = await service.getPublicProfile('usr-1');
+      expect(profile.verifiedBadges).not.toContain('VERIFIED_SHELTER');
     });
 
     it('throws NotFoundException if user is not found', async () => {
