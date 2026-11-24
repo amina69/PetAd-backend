@@ -15,4 +15,5 @@ export class EventsModule {}
 
 export { custodyReducer } from './reducers/custody.reducer';
 export { petAvailabilityReducer } from './reducers/pet-availability.reducer';
+export { approvalReducer } from './reducers/approval.reducer';
 export type { CreateEventLogDto } from './events.service';
