@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EscrowService } from './escrow.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { PetStatus } from '../common/enums/pet-status.enum';
@@ -173,6 +173,38 @@ describe('EscrowService', () => {
       });
 
       expect(result.status).toBe(EscrowStatus.RELEASED);
+    });
+
+    it('throws ConflictException with ESCROW_FROZEN_BY_DISPUTE when DISPUTED', async () => {
+      mockPrismaService.escrow.findUnique.mockResolvedValueOnce({
+        id: escrowId,
+        amount: 100,
+        status: EscrowStatus.DISPUTED,
+      });
+      const err = await service.releaseEscrow(escrowId, txHash).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.response.code).toBe('ESCROW_FROZEN_BY_DISPUTE');
+    });
+  });
+
+  describe('refundEscrow', () => {
+    const escrowId = 'escrow-456';
+    const txHash = 'tx-hash-refund';
+
+    it('throws NotFoundException when escrow does not exist', async () => {
+      mockPrismaService.escrow.findUnique.mockResolvedValueOnce(null);
+      await expect(service.refundEscrow(escrowId, txHash)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ConflictException with ESCROW_FROZEN_BY_DISPUTE when DISPUTED', async () => {
+      mockPrismaService.escrow.findUnique.mockResolvedValueOnce({
+        id: escrowId,
+        amount: 50,
+        status: EscrowStatus.DISPUTED,
+      });
+      const err = await service.refundEscrow(escrowId, txHash).catch((e) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.response.code).toBe('ESCROW_FROZEN_BY_DISPUTE');
     });
   });
 });
