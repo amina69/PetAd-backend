@@ -15,11 +15,12 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 import { configuration } from './config/configuration';
 
 @Module({
@@ -31,16 +32,6 @@ import { configuration } from './config/configuration';
         limit: 100,
       },
     ]),
-
-    // To be used only when limits needs to be persisted upon restart
-
-    // ThrottlerModule.forRoot({
-    //   throttlers: [{ ttl: 60000, limit: 100 }],
-    //   storage: new ThrottlerStorageRedisService({
-    //     host: 'redis',  // Docker service name
-    //     port: 6379,
-    //   }),
-    // }),
 
     PrismaModule,
     PetsModule,
@@ -55,6 +46,8 @@ import { configuration } from './config/configuration';
     JobsModule,
     AdminModule,
     EventLedgerModule,
+    DisputesModule,
+    ApprovalsModule,
   ],
 
   controllers: [AppController],
