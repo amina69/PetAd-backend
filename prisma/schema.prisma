@@ -82,6 +82,12 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  APPROVAL
+}
+
+enum ApprovalEvaluationMode {
+  SEQUENTIAL
+  PARALLEL
 }
 
 enum EventType {
@@ -112,6 +118,11 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  APPROVAL_REQUESTED
+  APPROVAL_GRANTED
+  APPROVAL_REJECTED
+  APPROVAL_EXPIRED
+  APPROVAL_REASSIGNED
 }
 
 enum LogLevel {
@@ -390,4 +401,18 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+model ApprovalRule {
+  id             String                 @id @default(uuid())
+  requestType    String                 @unique @map("request_type")
+  requiredGroups String[]               @map("required_groups")
+  quorum         Int                    @default(1)
+  mode           ApprovalEvaluationMode @default(PARALLEL)
+  vetoOnReject   Boolean                @default(false) @map("veto_on_reject")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  @@index([requestType])
+  @@map("approval_rules")
 }
