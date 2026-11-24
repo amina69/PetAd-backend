@@ -16,6 +16,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequireVerifiedEmailGuard } from '../auth/guards/require-verified-email.guard';
+import { RequireVerifiedEmail } from '../auth/decorators/require-verified-email.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -30,7 +32,8 @@ export class CustodyController {
   constructor(private readonly custodyService: CustodyService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RequireVerifiedEmailGuard)
+  @RequireVerifiedEmail()
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth()
   @ApiOperation({
