@@ -42,6 +42,15 @@ export const configuration = (): AppConfig => {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
       from: env.SMTP_FROM,
+      rateLimitPerMinute: env.EMAIL_RATE_LIMIT_PER_MINUTE,
+    },
+    push: {
+      publicKey: env.VAPID_PUBLIC_KEY,
+      privateKey: env.VAPID_PRIVATE_KEY,
+      subject: env.VAPID_SUBJECT,
+    },
+    notifications: {
+      outboxPollMs: env.NOTIFICATION_OUTBOX_POLL_MS,
     },
     upload: {
       maxFileSize: env.MAX_FILE_SIZE,

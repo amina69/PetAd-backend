@@ -5,6 +5,8 @@ import { LoggingModule } from '../logging/logging.module';
 import { NotificationProcessor } from './processors/notification.processor';
 import { NotificationWorker } from './workers/notification.worker';
 import { NotificationQueueService } from './services/notification-queue.service';
+import { NotificationMetricsService } from './services/notification-metrics.service';
+import { NotificationDeadLetterService } from './services/notification-dead-letter.service';
 import { DataExportProcessor } from './processors/data-export.processor';
 import { DataExportWorker } from './workers/data-export.worker';
 import { DataExportCleanupProcessor } from './processors/data-export-cleanup.processor';
@@ -21,6 +23,8 @@ import { DataExportModule } from '../users/data-export/data-export.module';
   providers: [
     NotificationProcessor,
     NotificationQueueService,
+    NotificationMetricsService,
+    NotificationDeadLetterService,
     NotificationWorker,
     DataExportProcessor,
     DataExportWorker,
@@ -28,6 +32,8 @@ import { DataExportModule } from '../users/data-export/data-export.module';
   ],
   exports: [
     NotificationQueueService,
+    NotificationMetricsService,
+    NotificationDeadLetterService,
     DataExportProcessor,
     DataExportCleanupProcessor,
   ],

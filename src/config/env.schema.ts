@@ -23,6 +23,11 @@ export interface RawEnvConfig {
   SMTP_USER?: string;
   SMTP_PASS?: string;
   SMTP_FROM: string;
+  EMAIL_RATE_LIMIT_PER_MINUTE: number;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT: string;
+  NOTIFICATION_OUTBOX_POLL_MS: number;
   MAX_FILE_SIZE: number;
   UPLOAD_DEST: string;
   QUEUE_CONCURRENCY: number;
@@ -63,6 +68,15 @@ export interface AppConfig {
     user?: RawEnvConfig['SMTP_USER'];
     pass?: RawEnvConfig['SMTP_PASS'];
     from: RawEnvConfig['SMTP_FROM'];
+    rateLimitPerMinute: RawEnvConfig['EMAIL_RATE_LIMIT_PER_MINUTE'];
+  };
+  push: {
+    publicKey?: RawEnvConfig['VAPID_PUBLIC_KEY'];
+    privateKey?: RawEnvConfig['VAPID_PRIVATE_KEY'];
+    subject: RawEnvConfig['VAPID_SUBJECT'];
+  };
+  notifications: {
+    outboxPollMs: RawEnvConfig['NOTIFICATION_OUTBOX_POLL_MS'];
   };
   upload: {
     maxFileSize: RawEnvConfig['MAX_FILE_SIZE'];
@@ -148,6 +162,15 @@ export const envSchema = Joi.object<RawEnvConfig>({
   SMTP_USER: Joi.string().optional(),
   SMTP_PASS: Joi.string().optional(),
   SMTP_FROM: Joi.string().default('PetAd <no-reply@petad.local>'),
+  EMAIL_RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(1).default(20),
+
+  // Web Push. When absent, push subscription endpoints return 503 and the
+  // push channel is skipped; email/in-app continue to work.
+  VAPID_PUBLIC_KEY: Joi.string().optional(),
+  VAPID_PRIVATE_KEY: Joi.string().optional(),
+  VAPID_SUBJECT: Joi.string().default('mailto:no-reply@petad.local'),
+
+  NOTIFICATION_OUTBOX_POLL_MS: Joi.number().integer().min(100).default(5000),
 
   MAX_FILE_SIZE: Joi.number().integer().min(1).default(10485760),
   UPLOAD_DEST: Joi.string().default('./uploads'),

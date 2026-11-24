@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { NotificationProcessor } from './notification.processor';
 import { EmailService } from '../../email/email.service';
 import { LoggingService } from '../../logging/logging.service';
+import { PermanentEmailError } from '../../email/email.errors';
 
 describe('NotificationProcessor', () => {
   const mockEmailService = {
@@ -78,5 +79,26 @@ describe('NotificationProcessor', () => {
 
     expect(mockLoggingService.log).toHaveBeenCalled();
   });
-});
 
+  it('throws an unrecoverable error for permanent failures so they do not retry', async () => {
+    mockEmailService.sendTransactionalEmail.mockRejectedValue(
+      new PermanentEmailError('Invalid recipient', 'INVALID_ADDRESS'),
+    );
+    mockLoggingService.log.mockResolvedValue(null);
+
+    await expect(
+      processor.process({
+        id: 'job-permanent',
+        name: 'send_transactional_email',
+        queueName: 'notifications',
+        data: {
+          dto: {
+            to: 'not-an-address@example.com',
+            subject: 'Subject',
+            text: 'Text',
+          },
+        },
+      } as any),
+    ).rejects.toMatchObject({ name: 'UnrecoverableError' });
+  });
+});
