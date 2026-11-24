@@ -9,7 +9,6 @@ import {
   HttpCode,
   HttpStatus,
   UseInterceptors,
-  BadRequestException,
   UploadedFiles,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -122,23 +121,10 @@ export class AdoptionController {
   @CheckPolicy(PolicyAction.UPLOAD, PolicySubject.ADOPTION)
   @UseInterceptors(
     FilesInterceptor('files', 5, {
+      // Size is also enforced by UploadService from config; Multer stops
+      // oversized bodies before they are buffered in full.
       limits: {
         fileSize: parseInt(process.env.MAX_FILE_SIZE ?? '10485760'),
-      },
-      fileFilter: (req, file, cb) => {
-        const allowedTypes = [
-          'application/pdf',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ];
-
-        if (!allowedTypes.includes(file.mimetype)) {
-          cb(
-            new BadRequestException('Only PDF and DOCX files are allowed'),
-            false,
-          );
-        } else {
-          cb(null, true);
-        }
       },
     }),
   )
@@ -192,10 +178,7 @@ export class AdoptionController {
   })
   @ApiQuery({ name: 'petId', required: false, type: String })
   @ApiResponse({ status: 200, description: 'List of adoptions' })
-async findAll(
-    @GetUser() user: any,
-    @Query() query: FilterAdoptionsDto,
-  ) {
+  async findAll(@GetUser() user: any, @Query() query: FilterAdoptionsDto) {
     // If the CurrentUser decorator isn't wired properly, fallback to req.user would be needed,
     // but assuming @GetUser() returns the JwtPayload directly.
     return this.adoptionService.findAll(user, query);
