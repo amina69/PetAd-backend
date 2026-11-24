@@ -82,6 +82,13 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  SHELTER
+}
+
+enum ShelterVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 enum EventType {
@@ -112,6 +119,8 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  SHELTER_VERIFIED
+  SHELTER_REJECTED
 }
 
 enum LogLevel {
@@ -185,8 +194,33 @@ model User {
 
   dataExports DataExport[]
 
+  shelterProfile ShelterProfile?
+
   @@index([status])
   @@map("users")
+}
+
+// Onboarding record for SHELTER accounts. A shelter may only publish pet
+// listings while `verificationStatus` is VERIFIED.
+model ShelterProfile {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orgName            String  @map("org_name")
+  registrationNumber String  @unique @map("registration_number")
+  address            String
+  phone              String
+
+  verificationStatus ShelterVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?                  @map("verified_at")
+  rejectionReason    String?                    @map("rejection_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([verificationStatus])
+  @@map("shelter_profiles")
 }
 
 model PasswordResetToken {

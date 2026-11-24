@@ -86,6 +86,7 @@ export class UsersService {
         status: true,
         deletedAt: true,
         createdAt: true,
+        shelterProfile: { select: { verificationStatus: true } },
       },
     });
 
@@ -105,7 +106,12 @@ export class UsersService {
       [first, lastInitial].filter(Boolean).join(' ') || 'Anonymous';
 
     const verifiedBadges: string[] = [];
-    if (user.role === 'SHELTER') {
+    // Only an admin-verified shelter earns the badge; SHELTER role alone is
+    // just an unverified application.
+    if (
+      user.role === 'SHELTER' &&
+      user.shelterProfile?.verificationStatus === 'VERIFIED'
+    ) {
       verifiedBadges.push('VERIFIED_SHELTER');
     }
     if (user.stellarPublicKey) {
