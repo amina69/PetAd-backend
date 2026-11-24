@@ -120,19 +120,44 @@ enum LogLevel {
   ERROR
 }
 
+enum DocumentKind {
+  ID
+  PROOF_OF_ADDRESS
+  VACCINATION
+  EVIDENCE
+  MESSAGE_ATTACHMENT
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DocumentEntityType {
+  ADOPTION
+  CUSTODY
+  DISPUTE
+  MESSAGE
+  HEALTH_RECORD
+  PROFILE
+  OTHER
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash   String    @unique
-  familyId    String
-  userAgent   String?
-  ip          String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  familyId  String
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([familyId])
@@ -140,29 +165,37 @@ model Session {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
+  id        String   @id @default(uuid())
+  email     String   @unique
   // PII columns are nullable so a deleted account can keep its row for
   // referential integrity without retaining personal data.
   password  String?
-  firstName String?    @map("first_name")
-  lastName  String?    @map("last_name")
-  role      UserRole   @default(USER)
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  role      UserRole @default(USER)
 
   status           UserStatus @default(ACTIVE)
   suspendedAt      DateTime?  @map("suspended_at")
   suspensionReason String?    @map("suspension_reason")
 
-  trustScore Float   @default(50)
+  trustScore Float @default(50)
 
   // Profile fields editable through PATCH /users/:id
   phone    String?
   bio      String?
   location String?
 
-  stellarPublicKey String?   @unique @map("stellar_public_key")
-  avatarUrl        String?   @map("avatar_url")
-  avatarPublicId   String?   @map("avatar_public_id")
+  stellarPublicKey String? @unique @map("stellar_public_key")
+  avatarUrl        String? @map("avatar_url")
+  avatarPublicId   String? @map("avatar_public_id")
+
+  // Email verification. New accounts start unverified; messaging requires a
+  // verified address. Existing accounts were grandfathered by the migration
+  // that introduced this column.
+  emailVerified              Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt            DateTime? @map("email_verified_at")
+  emailVerificationTokenHash String?   @unique @map("email_verification_token_hash")
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
 
   // Set when the account is soft-deleted and its PII anonymised
   deletedAt DateTime? @map("deleted_at")
@@ -170,7 +203,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned   Pet[] @relation("PetOwner")
+  petsOwned Pet[] @relation("PetOwner")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
@@ -179,9 +212,17 @@ model User {
 
   events EventLog[] @relation("ActorEvents")
 
-  documents Document[]
+  documents           Document[]
   passwordResetTokens PasswordResetToken[]
-  sessions    Session[]
+  sessions            Session[]
+
+  conversationsAsParticipantOne Conversation[]            @relation("ConversationParticipantOne")
+  conversationsAsParticipantTwo Conversation[]            @relation("ConversationParticipantTwo")
+  conversationParticipations    ConversationParticipant[]
+  messagesSent                  Message[]                 @relation("SentMessages")
+  blocksCreated                 Block[]                   @relation("BlocksCreated")
+  blocksReceived                Block[]                   @relation("BlocksReceived")
+  reportsFiled                  Report[]                  @relation("ReportsFiled")
 
   dataExports DataExport[]
 
@@ -203,17 +244,17 @@ model PasswordResetToken {
 }
 
 model Pet {
-  id          String      @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   species     PetSpecies
-  status      PetStatus   @default(AVAILABLE)
+  status      PetStatus  @default(AVAILABLE)
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?     @map("image_url")
+  imageUrl    String?    @map("image_url")
 
-  currentOwnerId String?  @map("current_owner_id")
-  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
+  currentOwnerId String? @map("current_owner_id")
+  currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   // Location of the listing. Coordinates are stored rounded to ~100 m
   // (3 decimal places, see PetsService.roundCoordinate) so an owner's exact
@@ -227,8 +268,9 @@ model Pet {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  adoptions Adoption[]
-  custodies Custody[]
+  adoptions     Adoption[]
+  custodies     Custody[]
+  conversations Conversation[]
 
   @@index([species])
   @@index([status])
@@ -251,12 +293,12 @@ model Adoption {
   ownerId String @map("owner_id")
   owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String?  @unique @map("escrow_id")
+  escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
-  
+
   documents Document[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([adopterId])
@@ -265,13 +307,13 @@ model Adoption {
 }
 
 model Custody {
-  id       String        @id @default(uuid())
-  status   CustodyStatus @default(ACTIVE)
-  type     CustodyType
+  id     String        @id @default(uuid())
+  status CustodyStatus @default(ACTIVE)
+  type   CustodyType
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
-  startDate DateTime @map("start_date")
+  startDate DateTime  @map("start_date")
   endDate   DateTime?
 
   petId String @map("pet_id")
@@ -294,17 +336,17 @@ model Custody {
 model Escrow {
   id String @id @default(uuid())
 
-  stellarPublicKey String @unique @map("stellar_public_key")
+  stellarPublicKey       String @unique @map("stellar_public_key")
   stellarSecretEncrypted String @map("stellar_secret_encrypted")
 
-  assetCode String @default("XLM") @map("asset_code")
+  assetCode   String  @default("XLM") @map("asset_code")
   assetIssuer String? @map("asset_issuer")
 
   amount Decimal @db.Decimal(12, 2)
 
-  fundingTxHash  String? @map("funding_tx_hash")
-  releaseTxHash  String? @map("release_tx_hash")
-  refundTxHash   String? @map("refund_tx_hash")
+  fundingTxHash String? @map("funding_tx_hash")
+  releaseTxHash String? @map("release_tx_hash")
+  refundTxHash  String? @map("refund_tx_hash")
 
   requiredSignatures Int @default(2)
 
@@ -333,10 +375,10 @@ model AppLog {
 }
 
 model EventLog {
-  id          String           @id @default(uuid())
-  entityType  EventEntityType  @map("entity_type")
-  entityId    String           @map("entity_id")
-  eventType   EventType        @map("event_type")
+  id         String          @id @default(uuid())
+  entityType EventEntityType @map("entity_type")
+  entityId   String          @map("entity_id")
+  eventType  EventType       @map("event_type")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
@@ -356,21 +398,143 @@ model EventLog {
 }
 
 model Document {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   fileName     String
   fileUrl      String
   publicId     String
   mimeType     String
   size         Int
   uploadedById String
-  adoptionId   String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
-  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+  kind            DocumentKind   @default(OTHER)
+  status          DocumentStatus @default(PENDING)
+  rejectionReason String?
+  sha256          String?
+  deletedAt       DateTime?
 
+  // Polymorphic owner: entityType/entityId point at the adoption, custody,
+  // dispute, message, health record or profile the document belongs to.
+  // entityType is required; adoptionId is kept (nullable) for existing rows
+  // and for adoption document queries.
+  entityType DocumentEntityType
+  entityId   String
+  adoptionId String?            @map("adoptionId")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  uploadedBy        User               @relation(fields: [uploadedById], references: [id])
+  adoption          Adoption?          @relation(fields: [adoptionId], references: [id])
+  messageAttachment MessageAttachment?
+
+  @@index([entityType, entityId])
+  @@index([uploadedById])
+  @@index([adoptionId])
   @@map("documents")
+}
+
+model Conversation {
+  id               String @id @default(uuid())
+  petId            String @map("pet_id")
+  participantOneId String @map("participant_one_id")
+  participantTwoId String @map("participant_two_id")
+
+  pet            Pet  @relation(fields: [petId], references: [id], onDelete: Cascade)
+  participantOne User @relation("ConversationParticipantOne", fields: [participantOneId], references: [id])
+  participantTwo User @relation("ConversationParticipantTwo", fields: [participantTwoId], references: [id])
+
+  participants ConversationParticipant[]
+  messages     Message[]
+  reports      Report[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // participantOneId < participantTwoId (normalised by the service), so the
+  // unique key also guarantees one conversation per pet and participant pair.
+  @@unique([petId, participantOneId, participantTwoId])
+  @@index([participantOneId])
+  @@index([participantTwoId])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id                String    @id @default(uuid())
+  conversationId    String    @map("conversation_id")
+  userId            String    @map("user_id")
+  lastReadMessageId String?   @map("last_read_message_id")
+  lastReadAt        DateTime? @map("last_read_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderId       String   @map("sender_id")
+  // Plain text only. Messages are never rendered or stored as HTML.
+  body           String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                @relation("SentMessages", fields: [senderId], references: [id])
+  attachments  MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id         String   @id @default(uuid())
+  messageId  String   @map("message_id")
+  documentId String   @unique @map("document_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlocksCreated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("blocks")
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  reporterId     String   @map("reporter_id")
+  reason         String   @db.Text
+  details        String?  @db.Text
+  // Evidence snapshot taken at creation time. A database trigger rejects any
+  // later change to this column.
+  snapshot       Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  reporter     User         @relation("ReportsFiled", fields: [reporterId], references: [id])
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("reports")
 }
 
 model DataExport {

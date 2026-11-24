@@ -6,7 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Req,
-Res,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -23,6 +23,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -74,15 +75,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = (req as any).cookies?.refresh_token || req.body?.refresh_token;
+    const token =
+      (req as any).cookies?.refresh_token || req.body?.refresh_token;
     const userAgent = req.headers['user-agent'];
     const ip = req.ip;
     const result = await this.authService.refresh(token, userAgent, ip);
     this.setRefreshTokenCookie(res, result.refresh_token);
     return { access_token: result.access_token, user: result.user };
   }
-
-
 
   private setRefreshTokenCookie(res: Response, token: string) {
     const isProd = this.configService.get('NODE_ENV') === 'production';
@@ -103,6 +103,28 @@ export class AuthController {
   async me(@Req() req: Request) {
     const user = req.user as { sub?: string; userId?: string } | undefined;
     return this.authService.getCurrentUser(user?.sub ?? user?.userId);
+  }
+
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify the registered email address' })
+  @ApiResponse({ status: 200, description: 'Email verified' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token' })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.token);
+  }
+
+  @Post('email/resend')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Resend the email verification message' })
+  @ApiResponse({ status: 202, description: 'Verification email sent' })
+  async resendEmailVerification(@Req() req: Request) {
+    const user = req.user as { sub?: string; userId?: string } | undefined;
+    return this.authService.resendEmailVerification(
+      (user?.sub ?? user?.userId) as string,
+    );
   }
 
   @Post('logout')

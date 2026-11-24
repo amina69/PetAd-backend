@@ -42,6 +42,8 @@ export interface DocumentPolicyResource {
   id: string;
   uploadedById: string;
   adoption: { adopterId: string; ownerId: string } | null;
+  conversationParticipantIds?: string[];
+  profileOwnerId?: string | null;
 }
 
 export interface ResourcePolicy<TResource> {

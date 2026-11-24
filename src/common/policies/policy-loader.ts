@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { DocumentEntityType, Prisma, PrismaClient } from '@prisma/client';
 import { AdoptionPolicy } from './adoption.policy';
 import { CustodyPolicy } from './custody.policy';
 import { DocumentPolicy } from './document.policy';
@@ -85,7 +85,7 @@ export function loadCustodyForActor(
   );
 }
 
-export function loadDocumentForActor(
+export async function loadDocumentForActor(
   prisma: PolicyPrisma,
   actor: PolicyActor,
   documentId: string,
@@ -97,21 +97,68 @@ export function loadDocumentForActor(
       { uploadedById: actor.userId },
       { adoption: { adopterId: actor.userId } },
       { adoption: { ownerId: actor.userId } },
+      {
+        messageAttachment: {
+          message: {
+            conversation: {
+              OR: [
+                { participantOneId: actor.userId },
+                { participantTwoId: actor.userId },
+              ],
+            },
+          },
+        },
+      },
+      {
+        entityType: DocumentEntityType.PROFILE,
+        entityId: actor.userId,
+      },
     ];
   }
 
-  return findOrNotFound(
+  const document = await findOrNotFound(
     () =>
       prisma.document.findFirstOrThrow({
         where,
         select: {
           id: true,
           uploadedById: true,
+          entityType: true,
+          entityId: true,
           adoption: { select: { adopterId: true, ownerId: true } },
+          messageAttachment: {
+            select: {
+              message: {
+                select: {
+                  conversation: {
+                    select: {
+                      participantOneId: true,
+                      participantTwoId: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
     'Document',
   );
+
+  const conversation = document.messageAttachment?.message.conversation;
+
+  return {
+    id: document.id,
+    uploadedById: document.uploadedById,
+    adoption: document.adoption,
+    conversationParticipantIds: conversation
+      ? [conversation.participantOneId, conversation.participantTwoId]
+      : [],
+    profileOwnerId:
+      document.entityType === DocumentEntityType.PROFILE
+        ? document.entityId
+        : null,
+  };
 }
 
 export async function enforcePolicy(
