@@ -120,6 +120,33 @@ enum LogLevel {
   ERROR
 }
 
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum NotificationPriority {
+  HIGH
+  NORMAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum NotificationAudience {
+  ADOPTER
+  OWNER
+  HOLDER
+  ACTOR
+  ADMINS
+  COUNTERPARTY
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
@@ -184,6 +211,8 @@ model User {
   sessions    Session[]
 
   dataExports DataExport[]
+  pushSubscriptions PushSubscription[]
+  notifications     Notification[]
 
   @@index([status])
   @@map("users")
@@ -371,6 +400,72 @@ model Document {
   adoption     Adoption @relation(fields: [adoptionId], references: [id])
 
   @@map("documents")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Web Push endpoint (unique per browser/service-worker registration).
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model EmailSuppression {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("email_suppressions")
+}
+
+/// One row per (eventId, userId, channel). The unique constraint is the
+/// dedupe guarantee: replaying an event can never create a second
+/// notification for the same recipient/channel.
+model Notification {
+  id        String               @id @default(uuid())
+  eventId   String               @map("event_id")
+  eventType String               @map("event_type")
+  userId    String               @map("user_id")
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  audience  NotificationAudience
+  channel   NotificationChannel
+  priority  NotificationPriority @default(NORMAL)
+  status    NotificationStatus   @default(PENDING)
+  template  String
+  title     String
+  body      String
+  route     String?
+  dedupeKey String               @unique @map("dedupe_key")
+  attempts  Int                  @default(0)
+  sentAt    DateTime?            @map("sent_at")
+  error     String?
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@index([eventId])
+  @@index([status])
+  @@map("notifications")
+}
+
+/// Cursor for the notification outbox consumer. Events are consumed in
+/// (createdAt, id) order so replays are safe and nothing is skipped.
+model NotificationOutboxCursor {
+  id            String   @id
+  lastCreatedAt DateTime @map("last_created_at")
+  lastEventId   String   @map("last_event_id")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("notification_outbox_cursor")
 }
 
 model DataExport {

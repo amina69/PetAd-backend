@@ -10,6 +10,7 @@ import {
   getRedisConnection,
 } from '../queues/queue.config';
 import type { SendTransactionalEmailDto } from '../../email/dto/send-transactional-email.dto';
+import { NotificationMetricsService } from './notification-metrics.service';
 
 export type SendTransactionalEmailJobInput = {
   dto: SendTransactionalEmailDto;
@@ -20,7 +21,10 @@ export type SendTransactionalEmailJobInput = {
 export class NotificationQueueService implements OnModuleDestroy {
   private readonly queue: Queue<SendTransactionalEmailJobInput>;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metrics: NotificationMetricsService,
+  ) {
     const connection = getRedisConnection(configService);
     const attempts = getJobAttempts(configService);
     const backoffDelay = getJobBackoffDelay(configService);
@@ -31,22 +35,27 @@ export class NotificationQueueService implements OnModuleDestroy {
       connection,
       defaultJobOptions: {
         attempts,
-        backoff: { type: 'fixed', delay: backoffDelay },
+        backoff: { type: 'exponential', delay: backoffDelay },
+        removeOnComplete: 1000,
+        removeOnFail: false,
       },
     });
   }
 
   async enqueueSendTransactionalEmail(
     input: SendTransactionalEmailJobInput,
+    options: { jobId?: string } = {},
   ): Promise<Job<SendTransactionalEmailJobInput>> {
-    return this.queue.add(
+    const job = await this.queue.add(
       SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
       input,
+      options.jobId ? { jobId: options.jobId } : undefined,
     );
+    this.metrics.recordQueued();
+    return job;
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
   }
 }
-

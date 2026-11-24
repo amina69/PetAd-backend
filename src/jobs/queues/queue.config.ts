@@ -2,6 +2,7 @@ import type { ConfigService } from '@nestjs/config';
 
 export const NOTIFICATION_QUEUE_NAME = 'notifications';
 export const SEND_TRANSACTIONAL_EMAIL_JOB_NAME = 'send_transactional_email';
+export const NOTIFICATION_DEAD_LETTER_QUEUE_NAME = 'notifications_dlq';
 
 export const DATA_EXPORT_QUEUE_NAME = 'data_export';
 export const PROCESS_DATA_EXPORT_JOB_NAME = 'process_data_export';
