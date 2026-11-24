@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
+import { AnchoringService } from '../anchoring/anchoring.service';
 
 export interface AppendEventParams {
   aggregateType: EventEntityType | string;
@@ -28,6 +29,7 @@ export class EventLedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: EventLedgerRepository,
+    @Optional() private readonly anchoringService?: AnchoringService,
   ) {}
 
   /**
@@ -40,7 +42,7 @@ export class EventLedgerService {
    * After successful write, an anchoring job is queued.
    */
   async appendEvent(params: AppendEventParams) {
-    return this.prisma.$transaction(async (tx) => {
+    const event = await this.prisma.$transaction(async (tx) => {
       // Advisory lock prevents concurrent writes for the same aggregate
       await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(hashtext(${params.aggregateId}))
@@ -73,18 +75,21 @@ export class EventLedgerService {
         `Event appended: ${params.eventType} on ${params.aggregateType} [${params.aggregateId}] seq=${sequenceNumber}`,
       );
 
-      // Queue anchoring job (best-effort, non-blocking)
-      try {
-        await this.queueAnchoringJob(event);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        this.logger.warn(
-          `Failed to queue anchoring job for event ${event.id}: ${reason}`,
-        );
-      }
-
       return event;
     });
+
+    // Queue anchoring only after the ledger write has committed, so the
+    // anchoring transaction never runs inside the append transaction.
+    try {
+      await this.queueAnchoringJob(event);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to queue anchoring job for event ${event.id}: ${reason}`,
+      );
+    }
+
+    return event;
   }
 
   /**
@@ -130,8 +135,16 @@ export class EventLedgerService {
     this.logger.log(
       `Queuing anchoring job for event ${event.id} (aggregate: ${event.entityType}/${event.entityId}, seq: ${event.sequenceNumber})`,
     );
-    // Anchoring job implementation is deferred to issue #P3-27.
-    // For now we log the intent. When the anchoring processor is ready,
-    // this method will dispatch to the appropriate queue.
+
+    // Add the event to the current anchoring batch. Best-effort: a failure is
+    // logged by the caller and never blocks the ledger write.
+    await this.anchoringService?.addEventToBatch({
+      id: event.id,
+      entityType: event.entityType,
+      entityId: event.entityId,
+      eventType: event.eventType,
+      payload: (event as { payload?: unknown }).payload,
+      createdAt: (event as { createdAt?: Date }).createdAt ?? new Date(),
+    });
   }
 }

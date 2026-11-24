@@ -7,12 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole } from '@prisma/client';
+import { UploadService } from './upload.service';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinary: CloudinaryService,
+    private readonly uploadService: UploadService,
   ) {}
 
   /**
@@ -67,6 +69,13 @@ export class DocumentsService {
       );
     }
 
+    // Validate every file by content before storing any of them, so a bad
+    // file in a batch cannot leave partially-uploaded documents behind.
+    const validatedFiles = await this.uploadService.validateAll(
+      files,
+      'document',
+    );
+
     const uploadedResults: {
       fileName: string;
       fileUrl: string;
@@ -75,17 +84,19 @@ export class DocumentsService {
       size: number;
     }[] = [];
 
-    for (const file of files) {
+    for (const file of validatedFiles) {
       const result = await this.cloudinary.uploadDocument(
         file.buffer,
         `adoptions/${adoptionId}`,
+        file.storageKey,
       );
 
       uploadedResults.push({
-        fileName: file.originalname,
+        // Display metadata only: sanitised and using the detected extension.
+        fileName: file.displayName,
         fileUrl: result.secure_url,
         publicId: result.public_id,
-        mimeType: file.mimetype,
+        mimeType: file.mimeType,
         size: file.size,
       });
     }

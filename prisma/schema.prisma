@@ -82,6 +82,7 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  ANCHOR
 }
 
 enum EventType {
@@ -112,6 +113,15 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  EVENTS_ANCHORED
+}
+
+enum AnchorBatchStatus {
+  OPEN
+  SUBMITTED
+  CONFIRMED
+  DISPUTED
+  FAILED
 }
 
 enum LogLevel {
@@ -123,16 +133,16 @@ enum LogLevel {
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash   String    @unique
-  familyId    String
-  userAgent   String?
-  ip          String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  familyId  String
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([familyId])
@@ -140,29 +150,29 @@ model Session {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
+  id        String   @id @default(uuid())
+  email     String   @unique
   // PII columns are nullable so a deleted account can keep its row for
   // referential integrity without retaining personal data.
   password  String?
-  firstName String?    @map("first_name")
-  lastName  String?    @map("last_name")
-  role      UserRole   @default(USER)
+  firstName String?  @map("first_name")
+  lastName  String?  @map("last_name")
+  role      UserRole @default(USER)
 
   status           UserStatus @default(ACTIVE)
   suspendedAt      DateTime?  @map("suspended_at")
   suspensionReason String?    @map("suspension_reason")
 
-  trustScore Float   @default(50)
+  trustScore Float @default(50)
 
   // Profile fields editable through PATCH /users/:id
   phone    String?
   bio      String?
   location String?
 
-  stellarPublicKey String?   @unique @map("stellar_public_key")
-  avatarUrl        String?   @map("avatar_url")
-  avatarPublicId   String?   @map("avatar_public_id")
+  stellarPublicKey String? @unique @map("stellar_public_key")
+  avatarUrl        String? @map("avatar_url")
+  avatarPublicId   String? @map("avatar_public_id")
 
   // Set when the account is soft-deleted and its PII anonymised
   deletedAt DateTime? @map("deleted_at")
@@ -170,7 +180,7 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  petsOwned   Pet[] @relation("PetOwner")
+  petsOwned Pet[] @relation("PetOwner")
 
   adoptionsAsAdopter Adoption[] @relation("Adopter")
   adoptionsAsOwner   Adoption[] @relation("Owner")
@@ -179,9 +189,9 @@ model User {
 
   events EventLog[] @relation("ActorEvents")
 
-  documents Document[]
+  documents           Document[]
   passwordResetTokens PasswordResetToken[]
-  sessions    Session[]
+  sessions            Session[]
 
   dataExports DataExport[]
 
@@ -203,17 +213,17 @@ model PasswordResetToken {
 }
 
 model Pet {
-  id          String      @id @default(uuid())
+  id          String     @id @default(uuid())
   name        String
   species     PetSpecies
-  status      PetStatus   @default(AVAILABLE)
+  status      PetStatus  @default(AVAILABLE)
   breed       String?
   age         Int?
   description String?
-  imageUrl    String?     @map("image_url")
+  imageUrl    String?    @map("image_url")
 
-  currentOwnerId String?  @map("current_owner_id")
-  currentOwner   User?    @relation("PetOwner", fields: [currentOwnerId], references: [id])
+  currentOwnerId String? @map("current_owner_id")
+  currentOwner   User?   @relation("PetOwner", fields: [currentOwnerId], references: [id])
 
   // Location of the listing. Coordinates are stored rounded to ~100 m
   // (3 decimal places, see PetsService.roundCoordinate) so an owner's exact
@@ -251,12 +261,12 @@ model Adoption {
   ownerId String @map("owner_id")
   owner   User   @relation("Owner", fields: [ownerId], references: [id])
 
-  escrowId String?  @unique @map("escrow_id")
+  escrowId String? @unique @map("escrow_id")
   escrow   Escrow? @relation(fields: [escrowId], references: [id])
-  
+
   documents Document[]
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([adopterId])
@@ -265,13 +275,13 @@ model Adoption {
 }
 
 model Custody {
-  id       String        @id @default(uuid())
-  status   CustodyStatus @default(ACTIVE)
-  type     CustodyType
+  id     String        @id @default(uuid())
+  status CustodyStatus @default(ACTIVE)
+  type   CustodyType
 
   depositAmount Decimal? @db.Decimal(12, 2)
 
-  startDate DateTime @map("start_date")
+  startDate DateTime  @map("start_date")
   endDate   DateTime?
 
   petId String @map("pet_id")
@@ -294,17 +304,17 @@ model Custody {
 model Escrow {
   id String @id @default(uuid())
 
-  stellarPublicKey String @unique @map("stellar_public_key")
+  stellarPublicKey       String @unique @map("stellar_public_key")
   stellarSecretEncrypted String @map("stellar_secret_encrypted")
 
-  assetCode String @default("XLM") @map("asset_code")
+  assetCode   String  @default("XLM") @map("asset_code")
   assetIssuer String? @map("asset_issuer")
 
   amount Decimal @db.Decimal(12, 2)
 
-  fundingTxHash  String? @map("funding_tx_hash")
-  releaseTxHash  String? @map("release_tx_hash")
-  refundTxHash   String? @map("refund_tx_hash")
+  fundingTxHash String? @map("funding_tx_hash")
+  releaseTxHash String? @map("release_tx_hash")
+  refundTxHash  String? @map("refund_tx_hash")
 
   requiredSignatures Int @default(2)
 
@@ -333,16 +343,21 @@ model AppLog {
 }
 
 model EventLog {
-  id          String           @id @default(uuid())
-  entityType  EventEntityType  @map("entity_type")
-  entityId    String           @map("entity_id")
-  eventType   EventType        @map("event_type")
+  id         String          @id @default(uuid())
+  entityType EventEntityType @map("entity_type")
+  entityId   String          @map("entity_id")
+  eventType  EventType       @map("event_type")
+
+  // One-based position within the aggregate stream. Allocated inside the
+  // append transaction under a PostgreSQL advisory lock.
+  sequenceNumber Int @default(0) @map("sequence_number")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
 
-  txHash      String? @map("tx_hash")
-  blockHeight Int?    @map("block_height")
+  txHash        String? @map("tx_hash")
+  blockHeight   Int?    @map("block_height")
+  anchorBatchId String? @map("anchor_batch_id")
 
   payload  Json
   metadata Json?
@@ -350,6 +365,7 @@ model EventLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
+  @@index([entityId, sequenceNumber])
   @@index([eventType])
   @@index([createdAt])
   @@map("event_logs")
@@ -367,10 +383,50 @@ model Document {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
-  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+  adoption   Adoption @relation(fields: [adoptionId], references: [id])
 
   @@map("documents")
+}
+
+model AnchorBatch {
+  id         String            @id @default(cuid())
+  merkleRoot String?           @map("merkle_root")
+  status     AnchorBatchStatus @default(OPEN)
+
+  txHash      String? @unique @map("tx_hash")
+  blockHeight Int?    @map("block_height")
+
+  leafCount Int @default(0) @map("leaf_count")
+
+  submittedAt   DateTime? @map("submitted_at")
+  confirmedAt   DateTime? @map("confirmed_at")
+  disputeReason String?   @map("dispute_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  leaves AnchorBatchLeaf[]
+
+  @@index([status])
+  @@map("anchor_batches")
+}
+
+model AnchorBatchLeaf {
+  id      String      @id @default(cuid())
+  batchId String      @map("batch_id")
+  batch   AnchorBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  // One ledger event may be anchored at most once.
+  eventLogId String @unique @map("event_log_id")
+  eventHash  String @map("event_hash")
+  leafIndex  Int    @map("leaf_index")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([batchId])
+  @@index([eventHash])
+  @@map("anchor_batch_leaves")
 }
 
 model DataExport {

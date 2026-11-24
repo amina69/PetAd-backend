@@ -101,15 +101,23 @@ export class CloudinaryService {
     return result.result === 'ok' || result.result === 'not found';
   }
 
+  /**
+   * Upload a document under a caller-supplied, random public id. The
+   * uploader's own file name is never used as a storage key.
+   */
   async uploadDocument(
     buffer: Buffer,
     folder = 'documents',
+    publicId?: string,
   ): Promise<UploadApiResponse> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder,
           resource_type: 'raw',
+          ...(publicId ? { public_id: publicId } : {}),
+          use_filename: false,
+          unique_filename: false,
         },
         (error, result) => {
           if (error) {
