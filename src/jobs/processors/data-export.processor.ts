@@ -1,15 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
 import { DataExportService } from '../../users/data-export/data-export.service';
 import { LoggingService } from '../../logging/logging.service';
-import { DEAD_LETTER_QUEUE_NAME, DEAD_LETTER_ATTEMPTS_LIMIT } from '../../jobs/queues/queue.config';
+import type { ProcessDataExportJob } from '../queues/queue.config';
 
-export interface DataExportJobPayload {
-  exportId: string;
-  userId: string;
-  /** Idempotency key to deduplicate duplicate export requests. */
-  idempotencyKey?: string;
-}
+export type { DataExportJobPayload } from '../queues/queue.config';
 
 @Injectable()
 export class DataExportProcessor {
@@ -21,53 +15,7 @@ export class DataExportProcessor {
     private readonly loggingService: LoggingService,
   ) {}
 
-  /** Check if this idempotency key has already been processed (within TTL). */
-  private isIdempotent(
-    job: Job<DataExportJobPayload>,
-  ): boolean {
-    const key = job.data?.idempotencyKey;
-    if (!key) {
-      // No idempotency key configured; always process.
-      return false;
-    }
-
-    const cached = this.processedKeysCache.get(key);
-    if (!cached) {
-      return false;
-    }
-
-    // 24-hour TTL for idempotency deduplication
-    const now = new Date();
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    if (now.getTime() - cached.getTime() > twentyFourHours) {
-      // Expired cache entry – allow re-processing.
-      this.processedKeysCache.delete(key);
-      return false;
-    }
-
-    return true;
-  }
-
-  private recordProcessedKey(key: string): void {
-    this.processedKeysCache.set(key, new Date());
-  }
-
-  async process(job: Job<DataExportJobPayload>): Promise<void> {
-    // Idempotency check: skip if same key already processed
-    if (this.isIdempotent(job)) {
-      const descriptiveInfo = [
-        'Data export job skipped (idempotent)',
-        `(queueJobId=${String(job.id)})`,
-        `(exportId=${String(job.data?.exportId)})`,
-        `(idempotencyKey=${String(job.data?.idempotencyKey)})`,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      this.logger.log(descriptiveInfo);
-      return;
-    }
-
+  async process(job: ProcessDataExportJob): Promise<void> {
     const { exportId, userId } = job.data;
     const currentAttempts = job.attemptsMade || 0;
 

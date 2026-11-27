@@ -11,6 +11,6 @@ import { PetsModule } from '../pets/pets.module';
   imports: [PrismaModule, DocumentsModule, EventLedgerModule, PetsModule],
   controllers: [AdoptionController],
   providers: [AdoptionService, AdoptionStateMachine],
-  exports: [AdoptionStateMachine],
+  exports: [AdoptionService, AdoptionStateMachine],
 })
 export class AdoptionModule {}

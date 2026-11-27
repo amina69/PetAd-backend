@@ -99,6 +99,26 @@ export class EventLedgerRepository {
   }
 
   /**
+   * Finds a bounded page of events in stable global-position order.
+   */
+  async findPage(
+    where: Record<string, unknown>,
+    afterPosition: number | undefined,
+    take: number,
+  ) {
+    return (this.prisma.eventLog as any).findMany({
+      where: {
+        ...where,
+        ...(afterPosition !== undefined
+          ? { globalPosition: { gt: afterPosition } }
+          : {}),
+      },
+      orderBy: { globalPosition: 'asc' },
+      take,
+    });
+  }
+
+  /**
    * Returns all missing sequence numbers for an aggregate.
    */
   async findGaps(aggregateId: string): Promise<number[]> {

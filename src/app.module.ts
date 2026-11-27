@@ -15,12 +15,16 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { LoggingModule } from './logging/logging.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { TtlCacheModule } from './common/cache/ttl-cache.module';
 
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
+import { AdminBulkModule } from './admin/bulk/bulk.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { FlagsModule } from './flags/flags.module';
 import { configuration } from './config/configuration';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -42,6 +46,7 @@ import { configuration } from './config/configuration';
     //   }),
     // }),
 
+    MetricsModule,
     PrismaModule,
     PetsModule,
     AdoptionModule,
@@ -52,9 +57,12 @@ import { configuration } from './config/configuration';
     AuthModule,
     HealthModule,
     LoggingModule,
+    TtlCacheModule,
     JobsModule,
     AdminModule,
+    AdminBulkModule,
     EventLedgerModule,
+    FlagsModule,
   ],
 
   controllers: [AppController],

@@ -1,14 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
 import { EmailService } from '../../email/email.service';
 import { LoggingService } from '../../logging/logging.service';
-import type { SendTransactionalEmailDto } from '../../email/dto/send-transactional-email.dto';
-import { DEAD_LETTER_QUEUE_NAME, DEAD_LETTER_ATTEMPTS_LIMIT } from '../../jobs/queues/queue.config';
+import type { NotificationEmailJob } from '../queues/queue.config';
 
-export type SendTransactionalEmailJobPayload = {
-  dto: SendTransactionalEmailDto;
-  metadata?: Record<string, any>;
-};
+export type { SendTransactionalEmailJobPayload } from '../queues/queue.config';
 
 export type NotificationJobIdempotency = {
   idempotencyKey: string;
@@ -25,54 +20,7 @@ export class NotificationProcessor {
     private readonly loggingService: LoggingService,
   ) {}
 
-  /** Check if this idempotency key has already been processed (within TTL). */
-  private isIdempotent(
-    job: Job<SendTransactionalEmailJobPayload>,
-  ): boolean {
-    const key = job.data?.metadata?.idempotencyKey;
-    if (!key) {
-      // No idempotency key configured; always process.
-      return false;
-    }
-
-    const cached = this.processedKeysCache.get(key);
-    if (!cached) {
-      return false;
-    }
-
-    // 24-hour TTL for idempotency deduplication
-    const now = new Date();
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    if (now.getTime() - cached.getTime() > twentyFourHours) {
-      // Expired cache entry – allow re-processing.
-      this.processedKeysCache.delete(key);
-      return false;
-    }
-
-    return true;
-  }
-
-  private recordProcessedKey(key: string): void {
-    this.processedKeysCache.set(key, new Date());
-  }
-
-  async process(
-    job: Job<SendTransactionalEmailJobPayload>,
-  ): Promise<void> {
-    // Idempotency check: skip if same key already processed
-    if (this.isIdempotent(job)) {
-      const descriptiveInfo = [
-        'Notification job skipped (idempotent)',
-        `(queueJobId=${String(job.id)})`,
-        `(idempotencyKey=${String(job.data?.metadata?.idempotencyKey)})`,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      this.logger.log(descriptiveInfo);
-      return;
-    }
-
+  async process(job: NotificationEmailJob): Promise<void> {
     const payload = job.data;
     const to = payload?.dto?.to;
     const subject = payload?.dto?.subject;
@@ -117,7 +65,9 @@ export class NotificationProcessor {
         `(jobName=${String(job.name)})`,
         `(to=${String(to)})`,
         `(subject=${String(subject)})`,
-        payload?.metadata ? `(metadata=${JSON.stringify(payload.metadata)})` : '',
+        payload?.metadata
+          ? `(metadata=${JSON.stringify(payload.metadata)})`
+          : '',
         `reason=${reason}`,
       ]
         .filter(Boolean)

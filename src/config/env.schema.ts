@@ -35,6 +35,8 @@ export interface RawEnvConfig {
   TRUST_PROXY: boolean;
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   SENTRY_DSN?: string;
+  METRICS_USERNAME?: string;
+  METRICS_PASSWORD?: string;
 }
 
 /**
@@ -82,6 +84,7 @@ export interface AppConfig {
   trustProxy: RawEnvConfig['TRUST_PROXY'];
   logLevel: RawEnvConfig['LOG_LEVEL'];
   sentryDsn?: RawEnvConfig['SENTRY_DSN'];
+  metrics: { username?: string; password?: string };
 }
 
 /**
@@ -169,8 +172,6 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
-
-  // Field-level PII encryption key (32+ chars; derived via SHA-256 for AES-256-GCM)
-  // @ts-ignore - TypeScript type gap with Joi schema integration; key is validated at runtime.
-  PIPI_ENCRYPTION_KEY: Joi.string().min(32).optional(),
+  METRICS_USERNAME: Joi.string().empty('').min(1).optional(),
+  METRICS_PASSWORD: Joi.string().empty('').min(16).optional(),
 }).options({ abortEarly: false, allowUnknown: true });

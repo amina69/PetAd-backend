@@ -6,6 +6,7 @@ import { EventsService } from '../events/events.service';
 import { EventEntityType, EventType } from '@prisma/client';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
+import { REQUIRE_VERIFIED_EMAIL_KEY } from '../auth/decorators/require-verified-email.decorator';
 
 describe('AdoptionController', () => {
   let controller: AdoptionController;
@@ -55,6 +56,15 @@ describe('AdoptionController', () => {
     }).compile();
 
     controller = module.get<AdoptionController>(AdoptionController);
+  });
+
+  it('requires a verified email to create an adoption request', () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRE_VERIFIED_EMAIL_KEY,
+        controller.requestAdoption,
+      ),
+    ).toBe(true);
   });
 
   it('should be defined', () => {

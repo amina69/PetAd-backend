@@ -5,13 +5,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Worker } from 'bullmq';
-import type { Job } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import {
-  DATA_EXPORT_QUEUE_NAME,
-  PROCESS_DATA_EXPORT_JOB_NAME,
   getQueueConcurrency,
+  getQueuePrefix,
   getRedisConnection,
+  JobName,
+  QueueName,
+  type ProcessDataExportJob,
 } from '../queues/queue.config';
 import { DataExportProcessor } from '../processors/data-export.processor';
 
@@ -25,29 +26,30 @@ export class DataExportWorker implements OnModuleInit, OnModuleDestroy {
     private readonly processor: DataExportProcessor,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit(): void {
     try {
       const connection = getRedisConnection(this.configService);
       const concurrency = getQueueConcurrency(this.configService);
 
       this.worker = new Worker(
-        DATA_EXPORT_QUEUE_NAME,
-        async (job: Job<any>) => {
-          if (job.name === PROCESS_DATA_EXPORT_JOB_NAME) {
-            await this.processor.process(job);
+        QueueName.DATA_EXPORT,
+        async (job) => {
+          if (String(job.name) === String(JobName.PROCESS_DATA_EXPORT)) {
+            await this.processor.process(job as ProcessDataExportJob);
           }
         },
         {
           connection,
+          prefix: getQueuePrefix(this.configService),
           concurrency,
         },
       );
       this.logger.log(
-        `DataExportWorker initialized for queue: ${DATA_EXPORT_QUEUE_NAME}`,
+        `DataExportWorker initialized for queue: ${QueueName.DATA_EXPORT}`,
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.warn(
-        `DataExportWorker could not start Redis worker: ${error.message}`,
+        `DataExportWorker could not start Redis worker: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

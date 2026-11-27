@@ -1,19 +1,18 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Worker } from 'bullmq';
-import type { Job } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import {
-  NOTIFICATION_QUEUE_NAME,
-  SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
   getQueueConcurrency,
+  getQueuePrefix,
   getRedisConnection,
+  JobName,
+  QueueName,
+  type NotificationEmailJob,
 } from '../queues/queue.config';
 import { NotificationProcessor } from '../processors/notification.processor';
 
 @Injectable()
-export class NotificationWorker
-  implements OnModuleInit, OnModuleDestroy
-{
+export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
   private worker: Worker | null = null;
 
   constructor(
@@ -21,25 +20,23 @@ export class NotificationWorker
     private readonly notificationProcessor: NotificationProcessor,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit(): void {
     const connection = getRedisConnection(this.configService);
     const concurrency = getQueueConcurrency(this.configService);
 
-    // The processor is responsible for throwing descriptive errors and handling
-    // retries/dead-letter. See notification.processor.ts for logic.
     this.worker = new Worker(
-      NOTIFICATION_QUEUE_NAME,
-      async (job: Job<any>) => {
-        if (job.name !== SEND_TRANSACTIONAL_EMAIL_JOB_NAME) {
-          // Misconfigured payload should surface loudly.
+      QueueName.NOTIFICATIONS,
+      async (job) => {
+        if (String(job.name) !== String(JobName.SEND_TRANSACTIONAL_EMAIL)) {
           throw new Error(
-            `Unexpected job name "${job.name}" for queue "${NOTIFICATION_QUEUE_NAME}"`,
+            `Unexpected job name "${job.name}" for queue "${QueueName.NOTIFICATIONS}"`,
           );
         }
-        await this.notificationProcessor.process(job);
+        await this.notificationProcessor.process(job as NotificationEmailJob);
       },
       {
         connection,
+        prefix: getQueuePrefix(this.configService),
         concurrency,
       },
     );
@@ -49,4 +46,3 @@ export class NotificationWorker
     await this.worker?.close();
   }
 }
-

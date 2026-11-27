@@ -6,8 +6,10 @@ import {
   HttpCode,
   HttpStatus,
   Req,
-Res,
+  Res,
   UseGuards,
+  HttpException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -23,6 +25,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -74,15 +77,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = (req as any).cookies?.refresh_token || req.body?.refresh_token;
+    const token =
+      (req as any).cookies?.refresh_token || req.body?.refresh_token;
     const userAgent = req.headers['user-agent'];
     const ip = req.ip;
     const result = await this.authService.refresh(token, userAgent, ip);
     this.setRefreshTokenCookie(res, result.refresh_token);
     return { access_token: result.access_token, user: result.user };
   }
-
-
 
   private setRefreshTokenCookie(res: Response, token: string) {
     const isProd = this.configService.get('NODE_ENV') === 'production';
@@ -113,6 +115,62 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   async logout() {
     return this.authService.logout();
+  }
+
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify email address with a token' })
+  @ApiResponse({ status: 200, description: 'Email verified successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired verification token',
+  })
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.token);
+  }
+
+  @Post('email/resend')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Re-send the email verification message' })
+  @ApiResponse({ status: 202, description: 'Verification email sent' })
+  @ApiResponse({ status: 409, description: 'Email already verified' })
+  @ApiResponse({
+    status: 429,
+    description: 'Cooldown active (Retry-After header set)',
+  })
+  async resendEmailVerification(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const user = req.user as { sub?: string; userId?: string } | undefined;
+    const userId = user?.userId ?? user?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedException();
+    }
+
+    try {
+      return await this.authService.resendVerificationEmail(userId);
+    } catch (error) {
+      // Surface the cooldown as a Retry-After header, not just in the body.
+      if (error instanceof HttpException) {
+        const payload = error.getResponse();
+        if (
+          payload &&
+          typeof payload === 'object' &&
+          typeof (payload as { retryAfterSeconds?: unknown })
+            .retryAfterSeconds === 'number'
+        ) {
+          const { retryAfterSeconds } = payload as {
+            retryAfterSeconds: number;
+          };
+          res.setHeader('Retry-After', String(retryAfterSeconds));
+        }
+      }
+      throw error;
+    }
   }
 
   @Post('password/forgot')
