@@ -343,6 +343,15 @@ model AppLog {
   @@map("app_logs")
 }
 
+model ProjectionCheckpoint {
+  id          String   @id @default(uuid())
+  projection  String   @unique
+  lastPosition String
+  updatedAt   DateTime @updatedAt
+
+  @@index([projection])
+}
+
 model EventLog {
   id          String           @id @default(uuid())
   entityType  EventEntityType  @map("entity_type")

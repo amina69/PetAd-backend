@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
+import { EventBusService } from '../events/event-bus.service';
 
 export interface AppendEventParams {
   aggregateType: EventEntityType | string;
@@ -28,6 +29,7 @@ export class EventLedgerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: EventLedgerRepository,
+    private readonly eventBus: EventBusService,
   ) {}
 
   /**
@@ -80,6 +82,22 @@ export class EventLedgerService {
         const reason = error instanceof Error ? error.message : String(error);
         this.logger.warn(
           `Failed to queue anchoring job for event ${event.id}: ${reason}`,
+        );
+      }
+
+      // Publish through outbox to internal consumers (notifications, projections, anchoring, trust)
+      try {
+        await this.eventBus.publish({
+          eventId: event.id,
+          aggregateId: params.aggregateId,
+          globalPosition: sequenceNumber,
+          eventType: params.eventType,
+          payload: params.payload,
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `Failed to publish event ${event.id} to event bus: ${reason}`,
         );
       }
 
