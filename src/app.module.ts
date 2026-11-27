@@ -23,6 +23,7 @@ import { AdminModule } from './admin/admin.module';
 import { AdminBulkModule } from './admin/bulk/bulk.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
 import { FlagsModule } from './flags/flags.module';
+import { TrustModule } from './trust/trust.module';
 import { configuration } from './config/configuration';
 import { MetricsModule } from './metrics/metrics.module';
 
@@ -63,6 +64,7 @@ import { MetricsModule } from './metrics/metrics.module';
     AdminBulkModule,
     EventLedgerModule,
     FlagsModule,
+    TrustModule,
   ],
 
   controllers: [AppController],

@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggingService } from '../../logging/logging.service';
+import { TrustService } from '../../trust/trust.service';
 import { EventReplayResponseDto } from '../dto/event-replay-response.dto';
 import { createStrictReadOnlyPrisma } from './strict-prisma.proxy';
 
@@ -411,10 +412,11 @@ export class EventReplayService {
       }
       case EventEntityType.USER: {
         if (typeof state.trustScore === 'number') {
-          await tx.user.update({
-            where: { id: aggregateId },
-            data: { trustScore: state.trustScore },
-          });
+          await TrustService.projectScoreInTransaction(
+            tx,
+            aggregateId,
+            state.trustScore,
+          );
         }
         return;
       }

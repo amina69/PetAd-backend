@@ -5,9 +5,16 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { EventsModule } from '../events/events.module';
 import { DataExportModule } from './data-export/data-export.module';
+import { TrustModule } from '../trust/trust.module';
 
 @Module({
-  imports: [PrismaModule, CloudinaryModule, EventsModule, DataExportModule],
+  imports: [
+    PrismaModule,
+    CloudinaryModule,
+    EventsModule,
+    DataExportModule,
+    TrustModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService, DataExportModule],

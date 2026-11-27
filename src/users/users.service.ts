@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, UserRole, UserStatus } from '@prisma/client';
@@ -11,6 +12,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { TrustService } from '../trust/trust.service';
 import { UPDATABLE_USER_FIELDS, UpdateUserDto } from './dto/update-user.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { PublicProfileDto } from './dto/public-profile.dto';
@@ -70,6 +72,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
     private readonly cloudinary: CloudinaryService,
+    @Optional() private readonly trustService?: TrustService,
   ) {}
 
   async getPublicProfile(id: string): Promise<PublicProfileDto> {
@@ -477,38 +480,13 @@ export class UsersService {
   }
 
   async updateTrustScore(userId: string, delta: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, trustScore: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (!this.trustService) {
+      throw new Error(
+        'TrustService is required to update User.trustScore (direct writes are forbidden)',
+      );
     }
 
-    const newScore = Math.max(0, Math.min(100, user.trustScore + delta));
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: { trustScore: newScore },
-      select: {
-        id: true,
-        trustScore: true,
-      },
-    });
-
-    await this.eventsService.logEvent({
-      entityType: 'USER',
-      entityId: userId,
-      eventType: 'TRUST_SCORE_UPDATED',
-      payload: {
-        previousScore: user.trustScore,
-        newScore,
-        delta,
-      },
-    });
-
-    return updatedUser;
+    return this.trustService.adjustTrustScore(userId, delta);
   }
 
   private assertOnlyUpdatableFields(dto: UpdateUserDto) {

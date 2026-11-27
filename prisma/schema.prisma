@@ -126,6 +126,16 @@ enum DocumentVerificationStatus {
   REJECTED
 }
 
+enum TrustEventKind {
+  AGREEMENT_COMPLETED
+  DISPUTE_LOST
+  LATE_RETURN
+  REVIEW_RECEIVED
+  DOCUMENT_VERIFIED
+  CUSTODY_RETURNED
+  CUSTODY_VIOLATION
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
@@ -159,7 +169,9 @@ model User {
   suspendedAt      DateTime?  @map("suspended_at")
   suspensionReason String?    @map("suspension_reason")
 
-  trustScore Float   @default(50)
+  // Cached projection of the latest TrustScoreHistory / TrustSummary value.
+  // Direct writes outside TrustService are forbidden (enforced by lint and tests).
+  trustScore Float @default(50)
 
   // Profile fields editable through PATCH /users/:id
   phone    String?
@@ -195,6 +207,10 @@ model User {
   sessions    Session[]
 
   dataExports DataExport[]
+
+  trustEvents       TrustEvent[]
+  trustScoreHistory TrustScoreHistory[]
+  trustSummary      TrustSummary?
 
   @@index([status])
   @@index([createdAt])
@@ -388,6 +404,8 @@ model EventLog {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  trustEvents TrustEvent[] @relation("SourceTrustEvents")
+
   @@index([entityType, entityId])
   @@index([eventType])
   @@index([createdAt])
@@ -448,4 +466,54 @@ model DataExport {
   @@index([status])
   @@index([createdAt])
   @@map("data_exports")
+}
+
+// ─── Trust & Reputation (BE-141) ─────────────────────────
+
+// Append-only ledger of trust-affecting signals. Every TrustEvent must
+// reference the domain EventLog record (`sourceEventId`) that caused it.
+model TrustEvent {
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind          TrustEventKind
+  weight        Float
+  sourceEventId String         @map("source_event_id")
+  sourceEvent   EventLog       @relation("SourceTrustEvents", fields: [sourceEventId], references: [id], onDelete: Restrict)
+  at            DateTime       @default(now())
+
+  @@unique([userId, kind, sourceEventId])
+  @@index([userId, at])
+  @@index([sourceEventId])
+  @@map("trust_events")
+}
+
+// Append-only history of computed trust scores per algorithm version.
+model TrustScoreHistory {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score            Float
+  algorithmVersion String   @map("algorithm_version")
+  computedAt       DateTime @default(now()) @map("computed_at")
+
+  @@index([userId, computedAt])
+  @@map("trust_score_history")
+}
+
+// Materialized per-user trust projection backing User.trustScore.
+model TrustSummary {
+  userId           String    @id @map("user_id")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentScore     Float     @default(50) @map("current_score")
+  algorithmVersion String    @default("v1") @map("algorithm_version")
+  eventCount       Int       @default(0) @map("event_count")
+  positiveEvents   Int       @default(0) @map("positive_events")
+  negativeEvents   Int       @default(0) @map("negative_events")
+  lastEventAt      DateTime? @map("last_event_at")
+  computedAt       DateTime  @default(now()) @map("computed_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([currentScore])
+  @@map("trust_summaries")
 }
