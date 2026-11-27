@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { EventEntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventLedgerRepository } from './event-ledger.repository';
@@ -10,6 +10,17 @@ export interface AppendEventParams {
   eventType: string;
   payload: Record<string, unknown>;
   actorId?: string;
+}
+
+export interface EventLedgerQuery {
+  aggregateType?: string;
+  aggregateId?: string;
+  eventType?: string;
+  actorId?: string;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: string | number;
 }
 
 /**
@@ -110,6 +121,76 @@ export class EventLedgerService {
    */
   async getAggregateEvents(aggregateId: string) {
     return this.repository.findAllByAggregate(aggregateId);
+  }
+
+  /**
+   * Returns a bounded page of events filtered by ledger attributes.
+   */
+  async getLedgerEvents(query: EventLedgerQuery) {
+    const requestedLimit =
+      query.limit === undefined || query.limit === '' ? 50 : Number(query.limit);
+    if (
+      !Number.isInteger(requestedLimit) ||
+      requestedLimit < 1 ||
+      requestedLimit > 200
+    ) {
+      throw new BadRequestException('limit must be an integer between 1 and 200');
+    }
+
+    let afterPosition: number | undefined;
+    if (query.cursor !== undefined && query.cursor !== '') {
+      afterPosition = Number(query.cursor);
+      if (!Number.isSafeInteger(afterPosition) || afterPosition < 0) {
+        throw new BadRequestException('cursor must be a non-negative global position');
+      }
+    }
+
+    const where: Record<string, unknown> = {};
+    if (query.aggregateType) where.entityType = query.aggregateType;
+    if (query.aggregateId) where.entityId = query.aggregateId;
+    if (query.eventType) where.eventType = query.eventType;
+    if (query.actorId) where.actorId = query.actorId;
+
+    if (query.from || query.to) {
+      const createdAt: Record<string, Date> = {};
+      if (query.from) {
+        const from = new Date(query.from);
+        if (Number.isNaN(from.getTime())) {
+          throw new BadRequestException('from must be a valid date-time');
+        }
+        createdAt.gte = from;
+      }
+      if (query.to) {
+        const to = new Date(query.to);
+        if (Number.isNaN(to.getTime())) {
+          throw new BadRequestException('to must be a valid date-time');
+        }
+        createdAt.lte = to;
+      }
+      if (createdAt.gte && createdAt.lte && createdAt.gte > createdAt.lte) {
+        throw new BadRequestException('from must not be later than to');
+      }
+      where.createdAt = createdAt;
+    }
+
+    const events = await this.repository.findPage(
+      where,
+      afterPosition,
+      requestedLimit + 1,
+    );
+    const hasMore = events.length > requestedLimit;
+    const data = hasMore ? events.slice(0, requestedLimit) : events;
+    const lastEvent = data[data.length - 1];
+
+    return {
+      data,
+      limit: requestedLimit,
+      hasMore,
+      nextCursor:
+        hasMore && lastEvent?.globalPosition !== undefined
+          ? String(lastEvent.globalPosition)
+          : null,
+    };
   }
 
   /**
