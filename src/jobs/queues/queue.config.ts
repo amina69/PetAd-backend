@@ -130,6 +130,9 @@ export const SEND_TRANSACTIONAL_EMAIL_JOB_NAME =
 export const PROCESS_DATA_EXPORT_JOB_NAME = JobName.PROCESS_DATA_EXPORT;
 export const CLEANUP_DATA_EXPORT_JOB_NAME = JobName.CLEANUP_DATA_EXPORT;
 
+export const ANCHORING_QUEUE_NAME = 'anchoring';
+export const ANCHOR_EVENTS_JOB_NAME = 'anchor_events';
+
 export function getRedisConnection(configService: ConfigService) {
   const redisUrl = configService.get<string>('REDIS_URL');
   if (!redisUrl) {

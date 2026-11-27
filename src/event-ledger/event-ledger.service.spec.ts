@@ -147,7 +147,7 @@ describe('EventLedgerService', () => {
     });
 
     expect(loggerSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Queuing anchoring job'),
+      expect.stringContaining('Event appended'),
     );
   });
 

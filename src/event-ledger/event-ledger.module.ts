@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { EventLedgerService } from './event-ledger.service';
 import { EventLedgerRepository } from './event-ledger.repository';
 import { EventLedgerController } from './event-ledger.controller';
@@ -12,7 +13,12 @@ import { PrismaModule } from '../prisma/prisma.module';
  */
 @Global()
 @Module({
-  imports: [PrismaModule],
+  imports: [
+    PrismaModule,
+    BullModule.registerQueue({
+      name: 'anchoring',
+    }),
+  ],
   controllers: [EventLedgerController],
   providers: [EventLedgerService, EventLedgerRepository],
   exports: [EventLedgerService, EventLedgerRepository],
