@@ -5,9 +5,15 @@ import type { NotificationEmailJob } from '../queues/queue.config';
 
 export type { SendTransactionalEmailJobPayload } from '../queues/queue.config';
 
+export type NotificationJobIdempotency = {
+  idempotencyKey: string;
+  userId?: string;
+};
+
 @Injectable()
 export class NotificationProcessor {
   private readonly logger = new Logger(NotificationProcessor.name);
+  private readonly processedKeysCache = new Map<string, Date>();
 
   constructor(
     private readonly emailService: EmailService,
@@ -21,14 +27,41 @@ export class NotificationProcessor {
 
     try {
       await this.emailService.sendTransactionalEmail(payload.dto);
+      // Record that this key has been processed
+      const key = payload.metadata?.idempotencyKey;
+      if (key) {
+        this.recordProcessedKey(key);
+      }
       return;
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : String(error ?? 'Unknown');
 
+      // Increment attempt counter and check dead-letter threshold
+      const nextAttempts = job.attemptsMade ? job.attemptsMade + 1 : 1;
+
+      if (nextAttempts >= DEAD_LETTER_ATTEMPTS_LIMIT) {
+        // Max retry attempts exceeded - signal job failure for dead-letter handling
+        const descriptiveError = [
+          'Notification job reached max retry attempts',
+          `(queueJobId=${String(job.id)})`,
+          `(attempts=${String(nextAttempts)})`,
+          `(reason=${reason})`,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        this.logger.warn(descriptiveError);
+        // Re-throw so BullMQ can move the job to the dead-letter queue
+        // based on the worker's deadLetterTopic configuration, or the
+        // operator can manually intervene via Redis.
+        throw new Error(descriptiveError);
+      }
+
       const descriptiveError = [
         'Notification job failed',
         `(queueJobId=${String(job.id)})`,
+        `(attempts=${String(nextAttempts)})`,
         `(jobName=${String(job.name)})`,
         `(to=${String(to)})`,
         `(subject=${String(subject)})`,
@@ -53,6 +86,7 @@ export class NotificationProcessor {
             to,
             subject,
             ...payload.metadata,
+            attempts: nextAttempts,
           },
         });
       } catch {

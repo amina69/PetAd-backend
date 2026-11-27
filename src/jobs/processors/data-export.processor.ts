@@ -8,6 +8,7 @@ export type { DataExportJobPayload } from '../queues/queue.config';
 @Injectable()
 export class DataExportProcessor {
   private readonly logger = new Logger(DataExportProcessor.name);
+  private readonly processedKeysCache = new Map<string, Date>();
 
   constructor(
     private readonly dataExportService: DataExportService,
@@ -16,19 +17,47 @@ export class DataExportProcessor {
 
   async process(job: ProcessDataExportJob): Promise<void> {
     const { exportId, userId } = job.data;
+    const currentAttempts = job.attemptsMade || 0;
+
     this.logger.log(
-      `Processing data export job (exportId=${exportId}, userId=${userId})`,
+      `Processing data export job (exportId=${exportId}, userId=${userId}, attempts=${currentAttempts})`,
     );
 
     try {
       await this.dataExportService.processDataExport(exportId, userId);
+      // Record that this key has been processed
+      const key = job.data?.idempotencyKey;
+      if (key) {
+        this.recordProcessedKey(key);
+      }
       return;
     } catch (error) {
       const reason =
         error instanceof Error
           ? error.message
           : String(error ?? 'Unknown error');
-      const descriptiveError = `Data export job failed (exportId=${exportId}, userId=${userId}): ${reason}`;
+      const nextAttempts = currentAttempts + 1;
+
+      if (nextAttempts >= DEAD_LETTER_ATTEMPTS_LIMIT) {
+        // Max retry attempts exceeded - signal job failure for dead-letter handling
+        const descriptiveError = [
+          'Data export job reached max retry attempts',
+          `(queueJobId=${String(job.id)})`,
+          `(attempts=${String(nextAttempts)})`,
+          `(exportId=${exportId})`,
+          `(reason=${reason})`,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        this.logger.warn(descriptiveError);
+        // Re-throw so BullMQ can move the job to the dead-letter queue
+        // based on the worker's deadLetterTopic configuration, or the
+        // operator can manually intervene via Redis.
+        throw new Error(descriptiveError);
+      }
+
+      const descriptiveError = `Data export job failed (exportId=${exportId}, userId=${userId}, attempts=${nextAttempts}): ${reason}`;
 
       try {
         await this.loggingService.log({
@@ -40,7 +69,9 @@ export class DataExportProcessor {
             queue: job.queueName,
             jobId: job.id,
             exportId,
+            userId,
             reason,
+            attempts: nextAttempts,
           },
         });
       } catch {
