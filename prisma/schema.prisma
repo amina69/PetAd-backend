@@ -353,13 +353,17 @@ model ProjectionCheckpoint {
 }
 
 model EventLog {
-  id          String           @id @default(uuid())
-  entityType  EventEntityType  @map("entity_type")
-  entityId    String           @map("entity_id")
-  eventType   EventType        @map("event_type")
+  id             String           @id @default(uuid())
+  entityType     EventEntityType  @map("entity_type")
+  entityId       String           @map("entity_id")
+  eventType      EventType        @map("event_type")
 
   actorId String? @map("actor_id")
   actor   User?   @relation("ActorEvents", fields: [actorId], references: [id])
+
+  sequenceNumber Int              @default(1) @map("sequence_number")
+  prevHash       String?          @map("prev_hash")
+  eventHash      String?          @map("event_hash")
 
   txHash      String? @map("tx_hash")
   blockHeight Int?    @map("block_height")
@@ -369,6 +373,7 @@ model EventLog {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@unique([entityId, sequenceNumber])
   @@index([entityType, entityId])
   @@index([eventType])
   @@index([createdAt])
