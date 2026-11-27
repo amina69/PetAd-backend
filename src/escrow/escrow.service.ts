@@ -10,6 +10,10 @@ import {
 import { AdoptionStateMachine } from '../adoption/services/adoption-state-machine.service';
 import { PetAvailabilityService } from '../pets/services/pet-availability.service';
 import { PetStatus } from '../common/enums/pet-status.enum';
+import {
+  SigningPolicyService,
+  EscrowAction,
+} from './signing-policy.service';
 
 @Injectable()
 export class EscrowService {
@@ -18,6 +22,7 @@ export class EscrowService {
     private readonly events: EventsService,
     private readonly adoptionStateMachine: AdoptionStateMachine,
     private readonly petAvailabilityService: PetAvailabilityService,
+    private readonly signingPolicyService: SigningPolicyService,
   ) {}
 
   async createEscrow(amount: number, tx?: any) {
@@ -39,6 +44,12 @@ export class EscrowService {
   }
 
   async releaseEscrow(escrowId: string, txHash?: string) {
+    // Verify required approvals are present and fresh before signing.
+    const authorisation = await this.signingPolicyService.authoriseAndSign(
+      escrowId,
+      EscrowAction.RELEASE,
+    );
+
     return this.prisma.$transaction(async (tx) => {
       const escrow = await tx.escrow.findUnique({
         where: { id: escrowId },
@@ -58,12 +69,16 @@ export class EscrowService {
         },
       });
 
+      // Log which approvals authorised this signature.
       await this.events.logEvent({
         entityType: EventEntityType.ESCROW,
         entityId: escrowId,
         eventType: EventType.ESCROW_RELEASED,
         txHash,
-        payload: { amount: Number(escrow.amount) },
+        payload: {
+          amount: Number(escrow.amount),
+          ...this.signingPolicyService.buildSigningMetadata(authorisation),
+        },
       });
 
       // 2. If escrow is tied to an Adoption, update Adoption and Pet
@@ -98,7 +113,11 @@ export class EscrowService {
           entityType: EventEntityType.ADOPTION,
           entityId: adoption.id,
           eventType: EventType.ADOPTION_COMPLETED,
-          payload: { escrowId, petId: adoption.petId },
+          payload: {
+            escrowId,
+            petId: adoption.petId,
+            authorisedByApprovalIds: authorisation.approvalIds,
+          },
         });
       }
 
@@ -107,6 +126,12 @@ export class EscrowService {
   }
 
   async refundEscrow(escrowId: string, txHash?: string) {
+    // Verify required approvals are present and fresh before signing.
+    const authorisation = await this.signingPolicyService.authoriseAndSign(
+      escrowId,
+      EscrowAction.REFUND,
+    );
+
     return this.prisma.$transaction(async (tx) => {
       const escrow = await tx.escrow.findUnique({
         where: { id: escrowId },
@@ -124,12 +149,16 @@ export class EscrowService {
         },
       });
 
+      // Log which approvals authorised this signature.
       await this.events.logEvent({
         entityType: EventEntityType.ESCROW,
         entityId: escrowId,
         eventType: EventType.ESCROW_REFUNDED,
         txHash,
-        payload: { amount: Number(escrow.amount) },
+        payload: {
+          amount: Number(escrow.amount),
+          ...this.signingPolicyService.buildSigningMetadata(authorisation),
+        },
       });
 
       return updatedEscrow;
