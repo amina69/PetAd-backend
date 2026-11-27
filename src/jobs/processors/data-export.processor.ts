@@ -1,12 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
 import { DataExportService } from '../../users/data-export/data-export.service';
 import { LoggingService } from '../../logging/logging.service';
+import type { ProcessDataExportJob } from '../queues/queue.config';
 
-export interface DataExportJobPayload {
-  exportId: string;
-  userId: string;
-}
+export type { DataExportJobPayload } from '../queues/queue.config';
 
 @Injectable()
 export class DataExportProcessor {
@@ -17,7 +14,7 @@ export class DataExportProcessor {
     private readonly loggingService: LoggingService,
   ) {}
 
-  async process(job: Job<DataExportJobPayload>): Promise<void> {
+  async process(job: ProcessDataExportJob): Promise<void> {
     const { exportId, userId } = job.data;
     this.logger.log(
       `Processing data export job (exportId=${exportId}, userId=${userId})`,

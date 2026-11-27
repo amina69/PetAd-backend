@@ -8,6 +8,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { EventLedgerService } from './event-ledger.service';
+import type { EventLedgerQuery } from './event-ledger.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -16,17 +17,32 @@ import { Role } from '../auth/enums/role.enum';
 @ApiTags('Event Ledger')
 @Controller('admin/event-ledger')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@Roles(Role.ADMIN, Role.AUDITOR as Role)
 @ApiBearerAuth('JWT-auth')
 export class EventLedgerController {
   constructor(private readonly eventLedgerService: EventLedgerService) {}
 
+  @Get()
+  @ApiOperation({ summary: 'Query the event ledger with cursor pagination' })
+  @ApiQuery({ name: 'aggregateType', required: false })
+  @ApiQuery({ name: 'aggregateId', required: false })
+  @ApiQuery({ name: 'eventType', required: false })
+  @ApiQuery({ name: 'actorId', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Inclusive ISO date-time' })
+  @ApiQuery({ name: 'to', required: false, description: 'Inclusive ISO date-time' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'Global position cursor' })
+  @ApiQuery({ name: 'limit', required: false, example: 50, maximum: 200 })
+  @ApiResponse({ status: 200, description: 'A page of event ledger entries' })
+  async queryEvents(@Query() query: EventLedgerQuery) {
+    return this.eventLedgerService.getLedgerEvents(query);
+  }
+
   @Get(':aggregateId/events')
-  @ApiOperation({ summary: 'Get all events for an aggregate' })
+  @ApiOperation({ summary: 'Get all events for an aggregate', deprecated: true })
   @ApiParam({ name: 'aggregateId', description: 'Aggregate entity ID' })
   @ApiResponse({ status: 200, description: 'List of events for the aggregate' })
   async getAggregateEvents(@Param('aggregateId') aggregateId: string) {
-    return this.eventLedgerService.getAggregateEvents(aggregateId);
+    return this.eventLedgerService.getLedgerEvents({ aggregateId });
   }
 
   @Get(':aggregateId/integrity')
@@ -44,7 +60,7 @@ export class EventLedgerController {
   }
 
   @Get('type/:aggregateType')
-  @ApiOperation({ summary: 'Get events by aggregate type' })
+  @ApiOperation({ summary: 'Get events by aggregate type', deprecated: true })
   @ApiParam({
     name: 'aggregateType',
     description: 'Aggregate type (e.g., PET, ADOPTION)',
@@ -56,17 +72,17 @@ export class EventLedgerController {
   async getEventsByAggregateType(
     @Param('aggregateType') aggregateType: string,
   ) {
-    return this.eventLedgerService.getEventsByAggregateType(aggregateType);
+    return this.eventLedgerService.getLedgerEvents({ aggregateType });
   }
 
   @Get('event-type/:eventType')
-  @ApiOperation({ summary: 'Get events by event type' })
+  @ApiOperation({ summary: 'Get events by event type', deprecated: true })
   @ApiParam({
     name: 'eventType',
     description: 'Event type (e.g., ADOPTION_APPROVED)',
   })
   @ApiResponse({ status: 200, description: 'List of events matching the type' })
   async getEventsByEventType(@Param('eventType') eventType: string) {
-    return this.eventLedgerService.getEventsByEventType(eventType);
+    return this.eventLedgerService.getLedgerEvents({ eventType });
   }
 }

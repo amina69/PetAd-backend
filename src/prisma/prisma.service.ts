@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 // import { PrismaClient } from '../../generated/prisma/client';
 import { PrismaClient } from '@prisma/client';
 
@@ -14,12 +15,22 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private readonly pool: Pool;
 
   constructor() {
-    const adapter = new PrismaPg({
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL as string,
     });
-    super({ adapter });
+    super({ adapter: new PrismaPg(pool) });
+    this.pool = pool;
+  }
+
+  getPoolStats(): { totalCount: number; idleCount: number; waitingCount: number } {
+    return {
+      totalCount: this.pool.totalCount,
+      idleCount: this.pool.idleCount,
+      waitingCount: this.pool.waitingCount,
+    };
   }
 
   async onModuleInit(): Promise<void> {

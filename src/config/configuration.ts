@@ -61,5 +61,6 @@ export const configuration = (): AppConfig => {
     trustProxy: env.TRUST_PROXY,
     logLevel: env.LOG_LEVEL,
     sentryDsn: env.SENTRY_DSN,
+    metrics: { username: env.METRICS_USERNAME, password: env.METRICS_PASSWORD },
   };
 };
