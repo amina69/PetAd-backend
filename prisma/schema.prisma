@@ -8,6 +8,17 @@ datasource db {
 
 // ─── Enums ───────────────────────────────────────────────
 
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum IdempotencyStatus {
+  IN_FLIGHT
+  COMPLETED
+}
+
 enum UserRole {
   USER
   ADMIN
@@ -329,6 +340,46 @@ model Escrow {
 
   @@index([status])
   @@map("escrows")
+}
+
+// ─── Transactional Outbox (issue #270) ───────────────────
+
+model OutboxMessage {
+  id          String        @id @default(uuid())
+  type        String
+  payload     Json
+  status      OutboxStatus  @default(PENDING)
+  attempts    Int           @default(0)
+  availableAt DateTime      @default(now()) @map("available_at")
+  sentAt      DateTime?     @map("sent_at")
+  error       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, availableAt])
+  @@map("outbox_messages")
+}
+
+// ─── Idempotency Keys (issue #271) ───────────────────────
+
+model IdempotencyKey {
+  id           String            @id @default(uuid())
+  key          String
+  userId       String            @map("user_id")
+  route        String
+  requestHash  String            @map("request_hash")
+  status       IdempotencyStatus @default(IN_FLIGHT)
+  statusCode   Int?              @map("status_code")
+  responseBody Json?             @map("response_body")
+  expiresAt    DateTime          @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([key, userId, route])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
 }
 
 model AppLog {
