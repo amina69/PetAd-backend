@@ -30,6 +30,8 @@ import { FilterAdoptionsDto } from './dto/filter-adoptions.dto';
 import { CurrentUser as GetUser } from '../auth/decorators/current-user.decorator';
 import { RejectAdoptionDto } from './dto/reject-adoption.dto';
 import { CheckPolicy } from '../common/policies/check-policy.decorator';
+import { RequireVerifiedEmail } from '../auth/decorators/require-verified-email.decorator';
+import { RequireVerifiedEmailGuard } from '../auth/guards/require-verified-email.guard';
 import { PolicyAction, PolicySubject } from '../common/policies/policy.types';
 
 interface AuthRequest extends Request {
@@ -51,6 +53,8 @@ export class AdoptionController {
    * Fires ADOPTION_REQUESTED event on success.
    */
   @Post('requests')
+  @UseGuards(RequireVerifiedEmailGuard)
+  @RequireVerifiedEmail()
   @HttpCode(HttpStatus.CREATED)
   requestAdoption(@Req() req: AuthRequest, @Body() dto: CreateAdoptionDto) {
     return this.adoptionService.requestAdoption(
@@ -192,10 +196,7 @@ export class AdoptionController {
   })
   @ApiQuery({ name: 'petId', required: false, type: String })
   @ApiResponse({ status: 200, description: 'List of adoptions' })
-async findAll(
-    @GetUser() user: any,
-    @Query() query: FilterAdoptionsDto,
-  ) {
+  async findAll(@GetUser() user: any, @Query() query: FilterAdoptionsDto) {
     // If the CurrentUser decorator isn't wired properly, fallback to req.user would be needed,
     // but assuming @GetUser() returns the JwtPayload directly.
     return this.adoptionService.findAll(user, query);

@@ -5,6 +5,7 @@ import type { CreateCustodyDto } from './dto/create-custody.dto';
 import type { CustodyResponseDto } from './dto/custody-response.dto';
 import type { CurrentUserPayload } from '../auth/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { REQUIRE_VERIFIED_EMAIL_KEY } from '../auth/decorators/require-verified-email.decorator';
 
 describe('CustodyController', () => {
   let controller: CustodyController;
@@ -38,6 +39,12 @@ describe('CustodyController', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('requires a verified email to create a custody agreement', () => {
+    expect(
+      Reflect.getMetadata(REQUIRE_VERIFIED_EMAIL_KEY, controller.createCustody),
+    ).toBe(true);
   });
 
   it('should be defined', () => {

@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { EmailService } from '../email/email.service';
+import { EmailVerificationService } from './email-verification.service';
 
 @Injectable()
 export class AuthService {
@@ -25,7 +26,10 @@ export class AuthService {
   >();
 
   private recordFailedAttempt(key: string) {
-    const current = this.loginAttempts.get(key) || { count: 0, lastAttempt: Date.now() };
+    const current = this.loginAttempts.get(key) || {
+      count: 0,
+      lastAttempt: Date.now(),
+    };
     this.loginAttempts.set(key, {
       count: current.count + 1,
       lastAttempt: Date.now(),
@@ -35,11 +39,16 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly emailVerificationService: EmailVerificationService,
     @Optional()
     private readonly emailService?: EmailService,
   ) {}
 
-  private async generateAccessToken(user: { id: string; email: string; role: string }) {
+  private async generateAccessToken(user: {
+    id: string;
+    email: string;
+    role: string;
+  }) {
     const payload = { sub: user.id, email: user.email, role: user.role };
     return this.jwtService.sign(payload);
   }
@@ -64,7 +73,9 @@ export class AuthService {
         where: { familyId: session.familyId },
         data: { revokedAt: new Date() },
       });
-      throw new UnauthorizedException('Refresh token reuse detected. Session revoked.');
+      throw new UnauthorizedException(
+        'Refresh token reuse detected. Session revoked.',
+      );
     }
 
     if (session.expiresAt < new Date()) {
@@ -79,7 +90,12 @@ export class AuthService {
 
     // Generate new rotated refresh token in the same family
     const newAccessToken = await this.generateAccessToken(session.user);
-    const newRefreshToken = await this.generateRefreshToken(session.userId, userAgent, ip, session.familyId);
+    const newRefreshToken = await this.generateRefreshToken(
+      session.userId,
+      userAgent,
+      ip,
+      session.familyId,
+    );
 
     return {
       access_token: newAccessToken,
@@ -90,8 +106,20 @@ export class AuthService {
         firstName: session.user.firstName,
         lastName: session.user.lastName,
         role: session.user.role,
+        emailVerified: session.user.emailVerifiedAt !== null,
       },
     };
+  }
+
+  async verifyEmail(token: string) {
+    return this.emailVerificationService.verify(token);
+  }
+
+  async resendVerificationEmail(userId?: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+    return this.emailVerificationService.resend(userId);
   }
 
   async getCurrentUser(userId?: string) {
@@ -110,6 +138,7 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      emailVerified: user.emailVerifiedAt !== null,
     };
   }
 
@@ -120,17 +149,22 @@ export class AuthService {
   async cleanupExpiredSessions() {
     return this.prisma.session.deleteMany({
       where: {
-        OR: [
-          { expiresAt: { lt: new Date() } },
-          { revokedAt: { not: null } },
-        ],
+        OR: [{ expiresAt: { lt: new Date() } }, { revokedAt: { not: null } }],
       },
     });
   }
 
-  private async generateRefreshToken(userId: string, userAgent?: string, ip?: string, familyId?: string) {
+  private async generateRefreshToken(
+    userId: string,
+    userAgent?: string,
+    ip?: string,
+    familyId?: string,
+  ) {
     const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     const resolvedFamilyId = familyId || crypto.randomUUID();
 
@@ -168,8 +202,16 @@ export class AuthService {
       },
     });
 
+    // Send the verification email after the account exists. Delivery is
+    // best-effort and must never fail registration.
+    await this.emailVerificationService.sendVerification(user.id, user.email);
+
     const access_token = await this.generateAccessToken(user);
-    const refresh_token = await this.generateRefreshToken(user.id, userAgent, ip);
+    const refresh_token = await this.generateRefreshToken(
+      user.id,
+      userAgent,
+      ip,
+    );
 
     return {
       access_token,
@@ -180,11 +222,12 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        emailVerified: user.emailVerifiedAt !== null,
       },
     };
   }
 
-async login(dto: LoginDto, userAgent?: string, ip?: string) {
+  async login(dto: LoginDto, userAgent?: string, ip?: string) {
     const key = dto.email;
     const attempts = this.loginAttempts.get(key);
     if (
@@ -212,10 +255,14 @@ async login(dto: LoginDto, userAgent?: string, ip?: string) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-this.loginAttempts.delete(key);
+    this.loginAttempts.delete(key);
 
     const access_token = await this.generateAccessToken(user);
-    const refresh_token = await this.generateRefreshToken(user.id, userAgent, ip);
+    const refresh_token = await this.generateRefreshToken(
+      user.id,
+      userAgent,
+      ip,
+    );
 
     return {
       access_token,
@@ -226,6 +273,7 @@ this.loginAttempts.delete(key);
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        emailVerified: user.emailVerifiedAt !== null,
       },
     };
   }
@@ -237,7 +285,7 @@ this.loginAttempts.delete(key);
     const rateLimitWindowMs = 60 * 1000;
 
     if (now - lastRequest < rateLimitWindowMs) {
-this.logger.warn(
+      this.logger.warn(
         `Rate limit exceeded for forgot password: ${rateLimitKey}`,
       );
       // Return 202 identical response for anti-enumeration and rate-limiting

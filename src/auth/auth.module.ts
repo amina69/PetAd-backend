@@ -8,6 +8,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { SessionCleanupCron } from './session-cleanup.cron';
 import { EmailModule } from '../email/email.module';
+import { EmailVerificationService } from './email-verification.service';
 
 @Module({
   imports: [
@@ -21,13 +22,19 @@ import { EmailModule } from '../email/email.module';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'super-secret-key',
         signOptions: {
-          expiresIn: (configService.get<string>('JWT_EXPIRATION') || '15m') as any,
+          expiresIn: (configService.get<string>('JWT_EXPIRATION') ||
+            '15m') as any,
         },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, SessionCleanupCron],
-  exports: [AuthService, JwtModule, PassportModule],
+  providers: [
+    AuthService,
+    EmailVerificationService,
+    JwtStrategy,
+    SessionCleanupCron,
+  ],
+  exports: [AuthService, EmailVerificationService, JwtModule, PassportModule],
 })
 export class AuthModule {}
