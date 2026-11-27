@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
 import { configuration } from './config/configuration';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { configuration } from './config/configuration';
     //   }),
     // }),
 
+    MetricsModule,
     PrismaModule,
     PetsModule,
     AdoptionModule,
