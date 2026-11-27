@@ -29,7 +29,22 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
-      "prettier/prettier": ["error", { endOfLine: "auto" }],
+      'prettier/prettier': ['error', { endOfLine: 'auto' }],
+    },
+  },
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['src/trust/trust.service.ts', 'src/**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Property[key.name="data"] > ObjectExpression > Property[key.name="trustScore"]',
+          message:
+            'Direct writes to User.trustScore are forbidden outside src/trust/trust.service.ts; use TrustService instead (BE-141).',
+        },
+      ],
     },
   },
 );
