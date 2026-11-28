@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { EventReplayService } from './services/event-replay.service';
+import { AdminQueuesService } from './services/admin-queues.service';
 
 describe('AdminController', () => {
   let controller: AdminController;
@@ -16,6 +17,7 @@ describe('AdminController', () => {
       controllers: [AdminController],
       providers: [
         { provide: EventReplayService, useValue: eventReplayService },
+        { provide: AdminQueuesService, useValue: { getQueue: jest.fn(), claimItem: jest.fn(), unclaimItem: jest.fn() } },
       ],
     }).compile();
 

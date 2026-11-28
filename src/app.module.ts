@@ -20,6 +20,7 @@ import { TtlCacheModule } from './common/cache/ttl-cache.module';
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
+import { ModerationModule } from './moderation/moderation.module';
 import { AdminBulkModule } from './admin/bulk/bulk.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -61,6 +62,7 @@ import { MetricsModule } from './metrics/metrics.module';
     TtlCacheModule,
     JobsModule,
     AdminModule,
+ModerationModule,
     AdminBulkModule,
     EventLedgerModule,
     PaymentsModule,

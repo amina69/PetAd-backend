@@ -24,8 +24,11 @@ import {
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
 import { EventReplayService } from './services/event-replay.service';
+import { AdminQueuesService } from './services/admin-queues.service';
 import { ReplayEventsDto } from './dto/replay-events.dto';
 import { EventReplayResponseDto } from './dto/event-replay-response.dto';
+import { QueueQueryDto } from './dto/queue-query.dto';
+import { Get, Query } from '@nestjs/common';
 
 @ApiTags('admin')
 @ApiBearerAuth('JWT-auth')
@@ -33,7 +36,10 @@ import { EventReplayResponseDto } from './dto/event-replay-response.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class AdminController {
-  constructor(private readonly eventReplayService: EventReplayService) {}
+  constructor(
+    private readonly eventReplayService: EventReplayService,
+    private readonly adminQueuesService: AdminQueuesService,
+  ) {}
 
   /**
    * POST /admin/replay/:aggregateId
@@ -106,5 +112,39 @@ export class AdminController {
       upToSequence: dto.upToSequence,
       actorId,
     });
+  }
+
+  @Get('queues/:type')
+  @ApiOperation({ summary: 'Get work queue items by type with filters' })
+  @ApiParam({ name: 'type', description: 'Queue type (approvals, disputes, documents, shelters, reports)' })
+  async getQueue(
+    @Param('type') type: string,
+    @Query() query: QueueQueryDto,
+  ) {
+    return this.adminQueuesService.getQueue(type, query);
+  }
+
+  @Post('queues/items/:id/claim')
+  @ApiOperation({ summary: 'Claim a work queue item' })
+  @ApiParam({ name: 'id', description: 'Work queue item ID' })
+  async claimItem(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const reqUser = user as unknown as { userId?: string; sub?: string } | undefined;
+    const adminId = reqUser?.userId ?? reqUser?.sub;
+    return this.adminQueuesService.claimItem(id, adminId ?? 'unknown');
+  }
+
+  @Post('queues/items/:id/unclaim')
+  @ApiOperation({ summary: 'Unclaim a work queue item' })
+  @ApiParam({ name: 'id', description: 'Work queue item ID' })
+  async unclaimItem(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const reqUser = user as unknown as { userId?: string; sub?: string } | undefined;
+    const adminId = reqUser?.userId ?? reqUser?.sub;
+    return this.adminQueuesService.unclaimItem(id, adminId ?? 'unknown');
   }
 }
