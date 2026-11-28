@@ -1,52 +1,25 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { Queue } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import {
-  NOTIFICATION_QUEUE_NAME,
-  SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
-  getJobAttempts,
-  getJobBackoffDelay,
-  getRedisConnection,
+  JobName,
+  QueueName,
+  type SendTransactionalEmailJobPayload,
 } from '../queues/queue.config';
-import type { SendTransactionalEmailDto } from '../../email/dto/send-transactional-email.dto';
+import { TypedQueueService } from '../queues/typed-queue.service';
 
-export type SendTransactionalEmailJobInput = {
-  dto: SendTransactionalEmailDto;
-  metadata?: Record<string, any>;
-};
+export type SendTransactionalEmailJobInput = SendTransactionalEmailJobPayload;
 
 @Injectable()
-export class NotificationQueueService implements OnModuleDestroy {
-  private readonly queue: Queue<SendTransactionalEmailJobInput>;
-
-  constructor(private readonly configService: ConfigService) {
-    const connection = getRedisConnection(configService);
-    const attempts = getJobAttempts(configService);
-    const backoffDelay = getJobBackoffDelay(configService);
-
-    // Default job options ensure retry/backoff behavior even if callers
-    // enqueue jobs without explicit overrides.
-    this.queue = new Queue(NOTIFICATION_QUEUE_NAME, {
-      connection,
-      defaultJobOptions: {
-        attempts,
-        backoff: { type: 'fixed', delay: backoffDelay },
-      },
-    });
-  }
+export class NotificationQueueService {
+  constructor(private readonly queues: TypedQueueService) {}
 
   async enqueueSendTransactionalEmail(
     input: SendTransactionalEmailJobInput,
-  ): Promise<Job<SendTransactionalEmailJobInput>> {
-    return this.queue.add(
-      SEND_TRANSACTIONAL_EMAIL_JOB_NAME,
+  ): Promise<Job<SendTransactionalEmailJobPayload>> {
+    return this.queues.add(
+      QueueName.NOTIFICATIONS,
+      JobName.SEND_TRANSACTIONAL_EMAIL,
       input,
     );
   }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.queue.close();
-  }
 }
-

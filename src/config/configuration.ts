@@ -67,5 +67,6 @@ export const configuration = (): AppConfig => {
       receiptUrlTtlSeconds: env.PAYMENTS_RECEIPT_URL_TTL_SECONDS,
       receiptSigningSecret: env.PAYMENTS_RECEIPT_SIGNING_SECRET,
     },
+    metrics: { username: env.METRICS_USERNAME, password: env.METRICS_PASSWORD },
   };
 };

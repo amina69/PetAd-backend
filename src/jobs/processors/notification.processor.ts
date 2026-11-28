@@ -1,13 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from 'bullmq';
 import { EmailService } from '../../email/email.service';
 import { LoggingService } from '../../logging/logging.service';
-import type { SendTransactionalEmailDto } from '../../email/dto/send-transactional-email.dto';
+import type { NotificationEmailJob } from '../queues/queue.config';
 
-export type SendTransactionalEmailJobPayload = {
-  dto: SendTransactionalEmailDto;
-  metadata?: Record<string, any>;
-};
+export type { SendTransactionalEmailJobPayload } from '../queues/queue.config';
 
 @Injectable()
 export class NotificationProcessor {
@@ -18,9 +14,7 @@ export class NotificationProcessor {
     private readonly loggingService: LoggingService,
   ) {}
 
-  async process(
-    job: Job<SendTransactionalEmailJobPayload>,
-  ): Promise<void> {
+  async process(job: NotificationEmailJob): Promise<void> {
     const payload = job.data;
     const to = payload?.dto?.to;
     const subject = payload?.dto?.subject;
@@ -38,7 +32,9 @@ export class NotificationProcessor {
         `(jobName=${String(job.name)})`,
         `(to=${String(to)})`,
         `(subject=${String(subject)})`,
-        payload?.metadata ? `(metadata=${JSON.stringify(payload.metadata)})` : '',
+        payload?.metadata
+          ? `(metadata=${JSON.stringify(payload.metadata)})`
+          : '',
         `reason=${reason}`,
       ]
         .filter(Boolean)
@@ -68,4 +64,3 @@ export class NotificationProcessor {
     }
   }
 }
-

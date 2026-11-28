@@ -155,6 +155,12 @@ enum RefundStatus {
   FAILED
 }
 
+enum DocumentVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 // ─── Models ──────────────────────────────────────────────
 
 model Session {
@@ -202,6 +208,10 @@ model User {
   // Set when the account is soft-deleted and its PII anonymised
   deletedAt DateTime? @map("deleted_at")
 
+  // Set when the user proves control of their email address. Gated actions
+  // (adoption, custody, messaging) require this to be non-null.
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -216,7 +226,8 @@ model User {
 
   documents           Document[]
   passwordResetTokens PasswordResetToken[]
-  sessions            Session[]
+   emailVerificationTokens EmailVerificationToken[]
+   sessions                Session[]
 
   dataExports DataExport[]
 
@@ -224,6 +235,7 @@ model User {
   paymentQuotes PaymentQuote[] @relation("UserPaymentQuotes")
 
   @@index([status])
+  @@index([createdAt])
   @@map("users")
 }
 
@@ -238,6 +250,20 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+// Single-use token emailed to a user to prove ownership of their address.
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique @map("token_hash")
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("email_verification_tokens")
 }
 
 model Pet {
@@ -265,6 +291,9 @@ model Pet {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  archivedAt    DateTime? @map("archived_at")
+  archiveReason String?   @map("archive_reason")
+
   adoptions Adoption[]
   custodies Custody[]
 
@@ -272,6 +301,7 @@ model Pet {
   @@index([status])
   @@index([currentOwnerId])
   @@index([latitude, longitude])
+  @@index([archivedAt])
   @@map("pets")
 }
 
@@ -374,6 +404,15 @@ model AppLog {
   @@map("app_logs")
 }
 
+model ProjectionCheckpoint {
+  id          String   @id @default(uuid())
+  projection  String   @unique
+  lastPosition String
+  updatedAt   DateTime @updatedAt
+
+  @@index([projection])
+}
+
 model EventLog {
   id         String          @id @default(uuid())
   entityType EventEntityType @map("entity_type")
@@ -409,10 +448,29 @@ model Document {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  uploadedBy User     @relation(fields: [uploadedById], references: [id])
-  adoption   Adoption @relation(fields: [adoptionId], references: [id])
+  verificationStatus  DocumentVerificationStatus @default(PENDING)
+  verifiedAt          DateTime?
+  verifiedById        String?
+  verificationReason  String?
 
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  adoption     Adoption @relation(fields: [adoptionId], references: [id])
+
+  @@index([verificationStatus])
   @@map("documents")
+}
+
+model FeatureFlag {
+  id                 String   @id @default(uuid())
+  key                String   @unique
+  enabled            Boolean  @default(false)
+  rolloutPercentage  Int      @default(0) @map("rollout_percentage")
+  targetRoles        UserRole[] @default([]) @map("target_roles")
+  description        String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
 }
 
 model DataExport {

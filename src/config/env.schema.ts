@@ -39,6 +39,8 @@ export interface RawEnvConfig {
   PAYMENTS_RECEIPT_DIR: string;
   PAYMENTS_RECEIPT_URL_TTL_SECONDS: number;
   PAYMENTS_RECEIPT_SIGNING_SECRET?: string;
+  METRICS_USERNAME?: string;
+  METRICS_PASSWORD?: string;
 }
 
 /**
@@ -92,6 +94,7 @@ export interface AppConfig {
     receiptUrlTtlSeconds: RawEnvConfig['PAYMENTS_RECEIPT_URL_TTL_SECONDS'];
     receiptSigningSecret?: RawEnvConfig['PAYMENTS_RECEIPT_SIGNING_SECRET'];
   };
+  metrics: { username?: string; password?: string };
 }
 
 /**
@@ -188,4 +191,7 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .max(86400)
     .default(300),
   PAYMENTS_RECEIPT_SIGNING_SECRET: Joi.string().min(32).optional(),
+
+  METRICS_USERNAME: Joi.string().empty('').min(1).optional(),
+  METRICS_PASSWORD: Joi.string().empty('').min(16).optional(),
 }).options({ abortEarly: false, allowUnknown: true });

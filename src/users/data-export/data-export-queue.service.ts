@@ -1,76 +1,60 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
   Optional,
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
-import {
-  DATA_EXPORT_QUEUE_NAME,
-  PROCESS_DATA_EXPORT_JOB_NAME,
-  getJobAttempts,
-  getJobBackoffDelay,
-  getRedisConnection,
-} from '../../jobs/queues/queue.config';
+import { JobName, QueueName } from '../../jobs/queues/queue.config';
+import { TypedQueueService } from '../../jobs/queues/typed-queue.service';
 import { DataExportService } from './data-export.service';
 
-export interface DataExportJobPayload {
-  exportId: string;
-  userId: string;
-}
+export type { DataExportJobPayload } from '../../jobs/queues/queue.config';
+
+import type { DataExportJobPayload } from '../../jobs/queues/queue.config';
 
 @Injectable()
-export class DataExportQueueService implements OnModuleDestroy {
+export class DataExportQueueService {
   private readonly logger = new Logger(DataExportQueueService.name);
-  private queue: Queue<DataExportJobPayload> | null = null;
+  private readonly redisEnabled: boolean;
 
   constructor(
+    private readonly queues: TypedQueueService,
     private readonly configService: ConfigService,
     @Optional()
     @Inject(forwardRef(() => DataExportService))
     private readonly dataExportService?: DataExportService,
   ) {
-    try {
-      const connection = getRedisConnection(this.configService);
-      const attempts = getJobAttempts(this.configService);
-      const backoffDelay = getJobBackoffDelay(this.configService);
-
-      this.queue = new Queue(DATA_EXPORT_QUEUE_NAME, {
-        connection,
-        defaultJobOptions: {
-          attempts,
-          backoff: { type: 'fixed', delay: backoffDelay },
-        },
-      });
-    } catch {
+    this.redisEnabled = Boolean(this.configService.get<string>('REDIS_URL'));
+    if (!this.redisEnabled) {
       this.logger.warn(
-        'Redis not configured or unavailable for BullMQ; DataExportQueueService will process jobs via in-memory execution.',
+        'Redis not configured for BullMQ; DataExportQueueService will use in-memory execution.',
       );
     }
   }
 
   async enqueueDataExport(payload: DataExportJobPayload): Promise<void> {
-    if (this.queue) {
-      await this.queue.add(PROCESS_DATA_EXPORT_JOB_NAME, payload);
+    if (this.redisEnabled) {
+      await this.queues.add(
+        QueueName.DATA_EXPORT,
+        JobName.PROCESS_DATA_EXPORT,
+        payload,
+      );
       this.logger.log(`Enqueued data export job ${payload.exportId} to BullMQ`);
-    } else if (this.dataExportService) {
-      // In-memory async fallback
+      return;
+    }
+
+    if (this.dataExportService) {
       setImmediate(() => {
         this.dataExportService
           ?.processDataExport(payload.exportId, payload.userId)
-          .catch((err) => {
+          .catch((error: Error) => {
             this.logger.error(
-              `Fallback data export processing error: ${err.message}`,
+              `Fallback data export processing error: ${error.message}`,
             );
           });
       });
     }
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.queue?.close();
   }
 }
