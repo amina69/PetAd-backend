@@ -22,6 +22,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AdminModule } from './admin/admin.module';
 import { AdminBulkModule } from './admin/bulk/bulk.module';
 import { EventLedgerModule } from './event-ledger/event-ledger.module';
+import { PaymentsModule } from './payments/payments.module';
 import { FlagsModule } from './flags/flags.module';
 import { configuration } from './config/configuration';
 import { MetricsModule } from './metrics/metrics.module';
@@ -62,6 +63,7 @@ import { MetricsModule } from './metrics/metrics.module';
     AdminModule,
     AdminBulkModule,
     EventLedgerModule,
+    PaymentsModule,
     FlagsModule,
   ],
 

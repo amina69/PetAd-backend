@@ -61,6 +61,12 @@ export const configuration = (): AppConfig => {
     trustProxy: env.TRUST_PROXY,
     logLevel: env.LOG_LEVEL,
     sentryDsn: env.SENTRY_DSN,
+    payments: {
+      feeRateBps: env.PAYMENTS_FEE_RATE_BPS,
+      receiptDir: env.PAYMENTS_RECEIPT_DIR,
+      receiptUrlTtlSeconds: env.PAYMENTS_RECEIPT_URL_TTL_SECONDS,
+      receiptSigningSecret: env.PAYMENTS_RECEIPT_SIGNING_SECRET,
+    },
     metrics: { username: env.METRICS_USERNAME, password: env.METRICS_PASSWORD },
   };
 };

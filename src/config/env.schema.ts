@@ -35,6 +35,10 @@ export interface RawEnvConfig {
   TRUST_PROXY: boolean;
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   SENTRY_DSN?: string;
+  PAYMENTS_FEE_RATE_BPS: number;
+  PAYMENTS_RECEIPT_DIR: string;
+  PAYMENTS_RECEIPT_URL_TTL_SECONDS: number;
+  PAYMENTS_RECEIPT_SIGNING_SECRET?: string;
   METRICS_USERNAME?: string;
   METRICS_PASSWORD?: string;
 }
@@ -84,6 +88,12 @@ export interface AppConfig {
   trustProxy: RawEnvConfig['TRUST_PROXY'];
   logLevel: RawEnvConfig['LOG_LEVEL'];
   sentryDsn?: RawEnvConfig['SENTRY_DSN'];
+  payments: {
+    feeRateBps: RawEnvConfig['PAYMENTS_FEE_RATE_BPS'];
+    receiptDir: RawEnvConfig['PAYMENTS_RECEIPT_DIR'];
+    receiptUrlTtlSeconds: RawEnvConfig['PAYMENTS_RECEIPT_URL_TTL_SECONDS'];
+    receiptSigningSecret?: RawEnvConfig['PAYMENTS_RECEIPT_SIGNING_SECRET'];
+  };
   metrics: { username?: string; password?: string };
 }
 
@@ -172,6 +182,16 @@ export const envSchema = Joi.object<RawEnvConfig>({
     .default('info'),
 
   SENTRY_DSN: Joi.string().uri().optional(),
+
+  PAYMENTS_FEE_RATE_BPS: Joi.number().integer().min(0).max(10000).default(250),
+  PAYMENTS_RECEIPT_DIR: Joi.string().default('./storage/receipts'),
+  PAYMENTS_RECEIPT_URL_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(30)
+    .max(86400)
+    .default(300),
+  PAYMENTS_RECEIPT_SIGNING_SECRET: Joi.string().min(32).optional(),
+
   METRICS_USERNAME: Joi.string().empty('').min(1).optional(),
   METRICS_PASSWORD: Joi.string().empty('').min(16).optional(),
 }).options({ abortEarly: false, allowUnknown: true });

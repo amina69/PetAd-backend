@@ -92,7 +92,7 @@ export class MetricsService {
     this.dbPool.set({ state: 'waiting' }, stats.waitingCount);
   }
 
-  setQueueStats(queue: 'notifications' | 'data_export', counts: Partial<Record<QueueState, number>>): void {
+  setQueueStats(queue: string, counts: Partial<Record<QueueState, number>>): void {
     for (const state of QUEUE_STATES) {
       this.queueJobs.set({ queue, state }, counts[state] ?? 0);
     }
