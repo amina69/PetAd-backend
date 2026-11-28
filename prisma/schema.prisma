@@ -12,7 +12,11 @@ enum UserRole {
   USER
   ADMIN
   SHELTER
+SUPPORT
+  MODERATOR
+  FINANCE
   AUDITOR
+}
 }
 
 enum UserStatus {
