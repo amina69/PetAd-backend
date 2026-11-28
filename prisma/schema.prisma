@@ -439,6 +439,7 @@ model EventLog {
 model Document {
   id           String   @id @default(cuid())
   fileName     String
+  sha256      String?
   fileUrl      String
   publicId     String
   mimeType     String

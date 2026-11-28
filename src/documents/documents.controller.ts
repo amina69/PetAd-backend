@@ -27,6 +27,14 @@ interface AuthRequest extends Request {
   user: { userId: string; email: string; role: string; sub?: string };
 }
 
+interface AuthRequest extends Request {
+  user: {
+    userId?: string;
+    sub?: string;
+    role?: string;
+  };
+}
+
 @ApiTags('Documents')
 @ApiBearerAuth('JWT-auth')
 @Controller('documents')
@@ -34,7 +42,7 @@ interface AuthRequest extends Request {
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
-  @Get('admin')
+@Get('admin')
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   @ApiOperation({
@@ -53,8 +61,25 @@ export class DocumentsController {
   @ApiOperation({ summary: 'Verify a document (Admin only)' })
   @ApiResponse({ status: 200, description: 'Document verified successfully' })
   verifyDocument(@Req() req: AuthRequest, @Param('id') id: string) {
-    const adminId = req.user.userId || req.user.sub || '';
+    const adminId = req.user?.userId ?? req.user?.sub ?? '';
     return this.documentsService.verifyDocument(id, adminId);
+  }
+
+  @Post(':id/verify-integrity')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary: 'Verify document integrity (Admin only)',
+    description: 'Re-hashes the stored object and reports match/mismatch.',
+  })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({ status: 200, description: 'Integrity verified' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Document not found' })
+  verifyIntegrity(@Param('id') id: string, @Req() req: AuthRequest) {
+    const actorId = req.user?.userId ?? req.user?.sub ?? 'admin';
+    return this.documentsService.verifyIntegrity(id, actorId);
   }
 
   @Post(':id/reject')
@@ -67,10 +92,9 @@ export class DocumentsController {
     @Param('id') id: string,
     @Body() dto: RejectDocumentDto,
   ) {
-    const adminId = req.user.userId || req.user.sub || '';
+    const adminId = req.user?.userId ?? req.user?.sub ?? '';
     return this.documentsService.rejectDocument(id, adminId, dto.reason);
   }
-
   @Get(':id')
   @CheckPolicy(PolicyAction.READ, PolicySubject.DOCUMENT)
   @ApiOperation({

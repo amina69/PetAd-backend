@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UserRole, EventEntityType, EventType } from '@prisma/client';
 import { EventsService } from '../events/events.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class DocumentsService {
@@ -48,6 +49,59 @@ export class DocumentsService {
     }
 
     return document;
+  }
+
+async verifyIntegrity(documentId: string, actorId: string) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: { adoption: true },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    let currentHash = '';
+    try {
+      const response = await fetch(document.fileUrl);
+      if (!response.ok || !response.body) {
+        throw new Error(`Failed to fetch document file from storage: ${response.statusText}`);
+      }
+      const hashStream = crypto.createHash('sha256');
+      const nodeStream = require('stream').Readable.fromWeb(response.body as any);
+      await new Promise((resolve, reject) => {
+        nodeStream.pipe(hashStream);
+        nodeStream.on('error', reject);
+        hashStream.on('finish', resolve);
+      });
+      currentHash = hashStream.digest('hex');
+    } catch (err) {
+      throw new BadRequestException('Could not retrieve stored file to verify integrity');
+    }
+
+    const storedHash = document.sha256;
+    const match = storedHash ? currentHash === storedHash : false;
+
+    await this.eventsService.logEvent({
+      entityType: 'ADOPTION' as any,
+      entityId: document.adoptionId,
+      eventType: EventType.DOCUMENT_VERIFIED,
+      actorId,
+      payload: {
+        documentId: document.id,
+        storedHash,
+        currentHash,
+        match,
+      },
+    });
+
+    return {
+      documentId: document.id,
+      storedHash,
+      currentHash,
+      match,
+      status: match ? 'MATCH' : 'MISMATCH',
+    };
   }
 
   async verifyDocument(documentId: string, adminId: string) {
@@ -105,7 +159,6 @@ export class DocumentsService {
 
     return updated;
   }
-
   async uploadDocuments(
     adoptionId: string,
     userId: string,
@@ -146,9 +199,14 @@ export class DocumentsService {
       publicId: string;
       mimeType: string;
       size: number;
+      sha256: string;
     }[] = [];
 
     for (const file of files) {
+      const hashStream = crypto.createHash('sha256');
+      hashStream.update(file.buffer);
+      const sha256 = hashStream.digest('hex');
+
       const result = await this.cloudinary.uploadDocument(
         file.buffer,
         `adoptions/${adoptionId}`,
@@ -160,10 +218,20 @@ export class DocumentsService {
         publicId: result.public_id,
         mimeType: file.mimetype,
         size: file.size,
+        sha256,
       });
     }
 
-    const createdDocuments = await this.prisma.$transaction(async (tx) => {
+const createdDocuments: any[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const docs: any[] = [];
+      for (const docData of uploadedResults) {
+        const newDoc = await tx.document.create({
+          data: {
+            ...docData,
+            uploadedById: userId,
+            adoptionId,
+const createdDocuments = await this.prisma.$transaction(async (tx) => {
       const docs: any[] = [];
       for (const docData of uploadedResults) {
         const newDoc = await tx.document.create({
@@ -179,6 +247,21 @@ export class DocumentsService {
       }
       return docs;
     });
+
+    for (const doc of createdDocuments) {
+      await this.eventsService.logEvent({
+        entityType: EventEntityType.DOCUMENT,
+        entityId: doc.id,
+        eventType: EventType.DOCUMENT_UPLOADED,
+        actorId: userId,
+        payload: {
+          documentId: doc.id,
+          fileName: doc.fileName,
+          sha256: doc.sha256,
+          adoptionId,
+        },
+      });
+    }
 
     return {
       message: 'Documents uploaded successfully',
