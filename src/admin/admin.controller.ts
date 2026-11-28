@@ -24,6 +24,7 @@ import {
   type CurrentUserPayload,
 } from '../auth/decorators/current-user.decorator';
 import { EventReplayService } from './services/event-replay.service';
+import { AnchoringRecoveryService } from '../anchoring/anchoring-recovery.service';
 import { ReplayEventsDto } from './dto/replay-events.dto';
 import { EventReplayResponseDto } from './dto/event-replay-response.dto';
 
@@ -33,7 +34,10 @@ import { EventReplayResponseDto } from './dto/event-replay-response.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class AdminController {
-  constructor(private readonly eventReplayService: EventReplayService) {}
+  constructor(
+    private readonly eventReplayService: EventReplayService,
+    private readonly anchoringRecoveryService: AnchoringRecoveryService,
+  ) {}
 
   /**
    * POST /admin/replay/:aggregateId
@@ -75,6 +79,27 @@ export class AdminController {
     status: 404,
     description: 'No events found for the supplied aggregateId',
   })
+  @Post('anchoring/batches/:id/retry')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Retry failed anchoring batch (admin only)',
+    description:
+      'Creates a new anchoring batch referencing the failed batch id, preserving historical lineage without mutation.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'The ID of the failed anchoring batch.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Retry initiated or new anchored batch created referencing the failed one.',
+  })
+  @ApiResponse({ status: 400, description: 'Batch is not in a failed state or cannot be retried' })
+  @ApiResponse({ status: 404, description: 'Anchoring batch not found' })
+  async retryAnchoringBatch(@Param('id') id: string): Promise<any> {
+    return this.anchoringRecoveryService.retryBatch(id);
+  }
+
   async replayAggregate(
     @Param('aggregateId') aggregateId: string,
     @Body() dto: ReplayEventsDto,

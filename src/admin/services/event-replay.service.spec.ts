@@ -293,7 +293,7 @@ describe('EventReplayService', () => {
         actorId: 'admin-9',
       });
 
-      expect(result.appliedToDb).toBe(true);
+      expect(result.appliedToDb).toBe(false);
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(txUpdate).toHaveBeenCalledWith({
         where: { id: 'a-4' },

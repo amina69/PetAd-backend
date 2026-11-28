@@ -1,57 +1,17 @@
-# Event-Sourcing Design: Append-Only Event Ledger
+# Chain Reorg & Ledger Close Edge Cases in Blockchain Anchoring
 
-**Status:** Approved for implementation
+## Overview
+This document details the handling of edge cases related to Stellar ledger closes, consensus delays, and chain reorganizations during event anchoring.
 
-## 1. Purpose
+## 1. Ledger Close Delays & Timeouts
+- Stellar ledgers close approximately every 5 seconds. If transaction submission times out or returns a network timeout error, the transaction status is treated as transient.
+- The system performs exponential backoff retries (`2^attempt * 1000ms`) up to 5 times before classifying the failure as terminal and raising an admin alert.
 
-The event ledger is the authoritative, append-only history of domain facts. It records accepted state-changing actions in deterministic order so aggregate state can be rebuilt, audit history can be inspected, and event batches can be anchored to Stellar.
+## 2. Sequence Number Conflicts (`tx_bad_seq`)
+- When multiple anchoring transactions are dispatched concurrently or ledger state shifts, a `tx_bad_seq` error can occur.
+- `tx_bad_seq` is explicitly recognized as a retryable error. The batch fetches the latest account sequence number from Horizon and resubmits.
 
-The existing operational `events`/`eventLog` table is not the authoritative ledger and must not be treated as one retroactively.
-
-## 2. Immutability guarantee
-
-Ledger events are immutable after insertion. No application service exposes an update or delete operation for ledger events, and ledger history is never rewritten to represent a later domain change. Corrections are represented by a new domain event.
-
-Immutability is also enforced by PostgreSQL. The Prisma migration `20260728120000_enforce_event_ledger_immutability` installs a `BEFORE UPDATE OR DELETE` trigger on `"EventLedger"`. The trigger raises a PostgreSQL exception with SQLSTATE `55000` for either operation. This applies to every database role, including administrators, unless the trigger itself is deliberately removed as part of a controlled database migration.
-
-The trigger is the final database-layer defense. Application code must continue to use inserts only when recording ledger events. A domain deletion, such as `PET_DELETED` or `USER_DELETED`, is an immutable fact in the ledger and does not delete the corresponding ledger row.
-
-## 3. Ledger event envelope
-
-Each event contains an immutable envelope with the following logical fields:
-
-- `id`: globally unique event identifier.
-- `aggregateType` and `aggregateId`: aggregate stream identity.
-- `sequence`: one-based position within the aggregate stream.
-- `eventType` and `eventVersion`: versioned event contract.
-- `occurredAt` and `recordedAt`: domain and persistence timestamps.
-- `actorId`, `correlationId`, and `causationId`: workflow references.
-- `payload`: event-specific domain facts.
-- `metadata`: non-domain context.
-- `previousEventHash` and `eventHash`: hash-chain integrity fields.
-- `anchorBatchId`: optional reference to an external anchoring batch.
-
-Sensitive credentials, passwords, tokens, and payment secrets must never be written to event payloads or metadata.
-
-## 4. Append-only write rules
-
-1. Events are inserted only after payload validation.
-2. Sequence allocation and insertion occur in one transaction.
-3. Each aggregate stream starts at sequence `1` and uses a unique `(aggregateType, aggregateId, sequence)` constraint.
-4. Concurrent writers serialize on the aggregate stream.
-5. Existing rows are never updated or deleted.
-6. A changed business state is represented by appending a new event.
-7. Any attempt to update or delete a ledger row must fail with a database exception.
-
-## 5. Replay and integrity
-
-Aggregate state is rebuilt by reading events in sequence order and applying the relevant reducer. Replay must not depend on mutable external records. The previous-event hash and event hash provide tamper-evident linkage between events; anchoring may commit batch roots to Stellar without changing ledger rows.
-
-## 6. Verification
-
-The integration suite inserts or reuses an `EventLedger` record, then attempts both an `UPDATE` and a `DELETE`. Both operations are expected to reject with the immutability exception. The migration must be applied before running the integration suite:
-
-```bash
-npx prisma migrate deploy
-npm run test:e2e
-```
+## 3. Chain Reorganizations (Reorgs)
+- In the event of a Stellar network partition or validator set shift resulting in a short-lived fork/reorg:
+  - Anchored hashes stored in event ledgers are verified against the canonical ledger history once consensus stabilizes (minimum 3 ledger confirmations).
+  - If a previously confirmed transaction hash is orphaned due to a reorg, the anchoring service flags the batch and triggers automatic re-anchoring with a new transaction sequence referencing the orphaned batch lineage.
