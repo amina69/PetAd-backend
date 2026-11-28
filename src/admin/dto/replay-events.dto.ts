@@ -39,6 +39,14 @@ export class ReplayEventsDto {
 
   @ApiProperty({
     description:
+      'Required when `dryRun: false`. A reason for applying the replay.',
+    required: false,
+  })
+  @IsOptional()
+  reason?: string;
+
+  @ApiProperty({
+    description:
       'Optional. Replay only the first N events for this aggregate ' +
       '(index-based; events are ordered by createdAt ASC).',
     required: false,

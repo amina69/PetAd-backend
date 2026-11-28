@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { EventReplayService } from './services/event-replay.service';
+import { AnchoringRecoveryService } from '../anchoring/anchoring-recovery.service';
 
 describe('AdminController', () => {
   let controller: AdminController;
@@ -16,6 +17,7 @@ describe('AdminController', () => {
       controllers: [AdminController],
       providers: [
         { provide: EventReplayService, useValue: eventReplayService },
+        { provide: AnchoringRecoveryService, useValue: { retryBatch: jest.fn() } },
       ],
     }).compile();
 

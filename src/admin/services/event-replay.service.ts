@@ -21,6 +21,10 @@ export interface ReplayAggregateOptions {
   aggregateType?: EventEntityType;
   /** Defaults to true for safety. When false, applies corrected state to the DB. */
   dryRun?: boolean;
+  /** Required when dryRun is false to confirm the write. */
+  confirm?: boolean;
+  /** Required audit reason when dryRun is false. */
+  reason?: string;
   /** Only replay the first N events (index-based, ordered by createdAt ASC). */
   upToSequence?: number;
   /**
@@ -237,6 +241,7 @@ export class EventReplayService {
     const hasWritableReducer = !READ_ONLY_AGGREGATES.has(aggregateType);
     const canApply =
       !dryRun &&
+      Boolean(options.confirm) &&
       hasWritableReducer &&
       !recordMissing &&
       Object.keys(replayedState).length > 0 &&
@@ -261,6 +266,7 @@ export class EventReplayService {
           dryRun,
           appliedToDb: true,
           actorId: options.actorId,
+          reason: options.reason,
         });
       });
       appliedToDb = true;
@@ -468,13 +474,14 @@ export class EventReplayService {
       dryRun: boolean;
       appliedToDb: boolean;
       actorId?: string;
+      reason?: string;
     },
   ): Promise<void> {
     await tx.appLog.create({
       data: {
         level: entry.appliedToDb ? 'WARN' : 'INFO',
         action: entry.appliedToDb
-          ? 'ADMIN_REPLAY_APPLIED'
+          ? 'REPLAY_APPLIED'
           : 'ADMIN_REPLAY_DRY_RUN',
         message: entry.appliedToDb
           ? `Admin applied replay for ${entry.aggregateType} ${entry.aggregateId} — ${entry.discrepancies.length} discrepancies fixed`
@@ -487,6 +494,7 @@ export class EventReplayService {
           discrepancies: entry.discrepancies,
           dryRun: entry.dryRun,
           appliedToDb: entry.appliedToDb,
+          reason: entry.reason,
         },
       },
     });

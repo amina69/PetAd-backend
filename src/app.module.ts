@@ -10,6 +10,7 @@ import { AdoptionModule } from './adoption/adoption.module';
 import { CustodyModule } from './custody/custody.module';
 import { EscrowModule } from './escrow/escrow.module';
 import { EventsModule } from './events/events.module';
+import { AnchoringModule } from './anchoring/anchoring.module';
 import { StellarModule } from './stellar/stellar.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
@@ -54,6 +55,7 @@ import { MetricsModule } from './metrics/metrics.module';
     CustodyModule,
     EscrowModule,
     EventsModule,
+    AnchoringModule,
     StellarModule,
     AuthModule,
     HealthModule,
