@@ -404,6 +404,33 @@ model AppLog {
   @@map("app_logs")
 }
 
+model SystemSetting {
+  key         String   @id
+  value       String
+  type        String
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  versions    SystemSettingVersion[]
+
+  @@map("system_settings")
+}
+
+model SystemSettingVersion {
+  id          String   @id @default(uuid())
+  settingKey  String
+  value       String
+  version     Int
+  actor       String?
+  reason      String?
+  createdAt   DateTime @default(now())
+  setting     SystemSetting @relation(fields: [settingKey], references: [key], onDelete: Cascade)
+
+  @@index([settingKey])
+  @@map("system_setting_versions")
+}
+
 model ProjectionCheckpoint {
   id          String   @id @default(uuid())
   projection  String   @unique
@@ -412,7 +439,6 @@ model ProjectionCheckpoint {
 
   @@index([projection])
 }
-
 model EventLog {
   id         String          @id @default(uuid())
   entityType EventEntityType @map("entity_type")
