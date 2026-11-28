@@ -83,6 +83,22 @@ enum EventEntityType {
   ADOPTION
   CUSTODY
   ESCROW
+  REPORT
+}
+
+enum ReportTargetType {
+  USER
+  REVIEW
+  MESSAGE
+  PET
+}
+
+enum ReportStatus {
+  OPEN
+  DISMISSED
+  WARNED
+  CONTENT_HIDDEN
+  USER_SUSPENDED
 }
 
 enum EventType {
@@ -113,6 +129,10 @@ enum EventType {
   USER_SUSPENDED
   USER_REINSTATED
   USER_DELETED
+  REPORT_CREATED
+  REPORT_RESOLVED
+  CONTENT_HIDDEN
+  CONTENT_RESTORED
 }
 
 enum LogLevel {
@@ -180,6 +200,20 @@ model Session {
   @@map("sessions")
 }
 
+model WorkQueueItem {
+  id          String    @id @default(uuid())
+  type        String
+  title       String
+  priority    String    @default("MEDIUM")
+  assigneeId  String?
+  claimedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([type])
+  @@index([assigneeId])
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -230,6 +264,8 @@ model User {
    sessions                Session[]
 
   dataExports DataExport[]
+  reportsSubmitted Report[] @relation("ReporterReports")
+  reportsHandled   Report[] @relation("AdminReports")
 
   payments      Payment[]      @relation("UserPayments")
   paymentQuotes PaymentQuote[] @relation("UserPaymentQuotes")
@@ -491,7 +527,6 @@ model DataExport {
   @@index([createdAt])
   @@map("data_exports")
 }
-
 // ─── Payments (Epic P) ───────────────────────────────────
 //
 // All monetary amounts are stored as integer minor units (BigInt) to keep
@@ -623,4 +658,26 @@ model Receipt {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("receipts")
+}
+
+model Report {
+  id          String             @id @default(uuid())
+  reporterId  String             @map("reporter_id")
+  reporter    User               @relation("ReporterReports", fields: [reporterId], references: [id])
+  targetType  ReportTargetType   @map("target_type")
+  targetId    String             @map("target_id")
+  reason      String
+  details     String?
+  status      ReportStatus       @default(OPEN)
+  handledById String?            @map("handled_by_id")
+  handledBy   User?              @relation("AdminReports", fields: [handledById], references: [id])
+  contentSnapshot Json           @map("content_snapshot")
+  isHidden    Boolean            @default(false) @map("is_hidden")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status])
+  @@index([targetType, targetId])
+  @@map("reports")
 }
